@@ -31,7 +31,7 @@ export function InfoPanel() {
           Powered by Claude
         </h3>
         <p className="text-sm text-anthropic-700">
-          This tool uses Claude to generate architectures—demonstrating the product
+          This tool uses Claude to generate reference architectures, demonstrating the product
           while building tools that help partners succeed with Claude.
         </p>
       </div>
