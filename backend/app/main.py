@@ -1,8 +1,7 @@
 """
-GSI Reference Architecture Generator - FastAPI Application
+Reference Architecture Generator - FastAPI Application
 
-This API generates healthcare-specific Claude deployment architectures
-for Global System Integrator (GSI) partners.
+This API generates healthcare-specific Claude deployment architectures.
 """
 
 import logging
@@ -66,8 +65,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="GSI Reference Architecture Generator",
-    description="Generate healthcare-specific Claude deployment architectures for GSI partners",
+    title="Reference Architecture Generator",
+    description="Generate healthcare-specific Claude deployment architectures",
     version="1.0.0",
     lifespan=lifespan,
 )
