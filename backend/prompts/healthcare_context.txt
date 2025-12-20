@@ -1,0 +1,108 @@
+# Healthcare Compliance Context
+
+## HIPAA Security Rule Safeguards
+
+### Administrative Safeguards (§164.308)
+- Security Management Process: Risk analysis, risk management, sanction policy, information system activity review
+- Assigned Security Responsibility: Designated security official
+- Workforce Security: Authorization and supervision, workforce clearance, termination procedures
+- Information Access Management: Access authorization, access establishment and modification
+- Security Awareness Training: Security reminders, protection from malicious software, log-in monitoring, password management
+- Security Incident Procedures: Response and reporting
+- Contingency Plan: Data backup, disaster recovery, emergency mode operation, testing and revision
+- Evaluation: Periodic technical and non-technical evaluation
+- Business Associate Contracts: Written contracts with BAA provisions
+
+### Physical Safeguards (§164.310)
+- Facility Access Controls: Contingency operations, facility security plan, access control and validation, maintenance records
+- Workstation Use: Policies for workstation use
+- Workstation Security: Physical safeguards for workstations
+- Device and Media Controls: Disposal, media re-use, accountability, data backup and storage
+
+### Technical Safeguards (§164.312)
+- Access Control: Unique user identification, emergency access procedure, automatic logoff, encryption and decryption
+- Audit Controls: Hardware, software, and procedural mechanisms to record and examine access
+- Integrity: Mechanisms to authenticate ePHI, protect from improper alteration or destruction
+- Person or Entity Authentication: Procedures to verify identity
+- Transmission Security: Integrity controls, encryption for data in transit
+
+## PHI Categories
+
+### Direct Identifiers (Must be protected or removed)
+- Names
+- Geographic data smaller than state
+- Dates (except year) related to individual
+- Phone numbers, fax numbers
+- Email addresses
+- Social Security numbers
+- Medical record numbers
+- Health plan beneficiary numbers
+- Account numbers
+- Certificate/license numbers
+- Vehicle identifiers
+- Device identifiers and serial numbers
+- Web URLs
+- IP addresses
+- Biometric identifiers
+- Full-face photographs
+- Any other unique identifying number
+
+### Clinical Data (PHI when combined with identifiers)
+- Diagnosis codes (ICD-10)
+- Procedure codes (CPT, HCPCS)
+- Medication lists
+- Lab results
+- Clinical notes
+- Treatment plans
+- Imaging reports
+
+## BAA Requirements
+
+### What Requires a BAA
+- Cloud service providers handling PHI
+- AI/LLM providers if PHI is transmitted
+- Analytics platforms processing PHI
+- Communication platforms for patient messaging
+
+### Key BAA Provisions
+- Permitted uses and disclosures
+- Safeguards implementation
+- Reporting of security incidents
+- Subcontractor requirements
+- Return or destruction of PHI
+- Compliance with Security Rule
+
+## De-identification Standards
+
+### Safe Harbor Method (§164.514(b)(2))
+Remove all 18 identifiers and have no actual knowledge that remaining information can identify an individual.
+
+### Expert Determination (§164.514(b)(1))
+Statistical or scientific expert determines risk of re-identification is very small.
+
+## Use Case Specific Compliance Notes
+
+### Clinical Documentation
+- Minimum necessary: Only access clinical data needed for the task
+- Audit logging: Record all access to clinical notes
+- De-identification consideration: Consider processing de-identified data when possible
+- Consent: May require patient consent for AI-assisted documentation
+
+### Prior Authorization
+- Transaction standards: Must comply with X12 278 format requirements
+- Minimum necessary: Only transmit required clinical data
+- Timely response: CMS regulations on response times
+- Audit trail: Complete record of authorization decisions
+
+### Medical Coding
+- Accuracy requirements: Codes must be supported by documentation
+- Audit trail: Full history of code suggestions and selections
+- Compliance: Avoid upcoding or unbundling issues
+- Training data: Ensure coding AI trained on compliant data
+
+### Patient Communication
+- Consent for electronic communication
+- Secure transmission (TLS 1.2+)
+- Identity verification before sharing PHI
+- Right to opt-out
+- Retention policies for messages

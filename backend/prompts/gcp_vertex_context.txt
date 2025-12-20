@@ -1,0 +1,169 @@
+# GCP Vertex AI Healthcare Architecture Context
+
+## Core Services
+
+### Vertex AI
+- **Service**: Unified ML platform with model garden
+- **Claude Access**: Claude models via Model Garden / Partner Models
+- **Key Features**: Model inference, fine-tuning, evaluation
+- **HIPAA**: Covered under GCP BAA
+- **Pricing**: Pay per token (input/output)
+
+### Cloud Healthcare API
+- **Service**: HIPAA-eligible FHIR/HL7v2/DICOM store
+- **Use Cases**: Centralized patient data, interoperability
+- **Integration**: Native FHIR R4, HL7v2 support
+- **Key Features**: De-identification, consent management
+
+### Healthcare Natural Language API
+- **Service**: Medical NLP
+- **Use Cases**: Entity extraction, relation detection
+- **Integration**: Pre-processing for Vertex AI
+
+## Integration Patterns
+
+### API Gateway Pattern (Cloud Endpoints / API Gateway)
+```
+Client → Cloud Endpoints → Cloud Run → Vertex AI
+                        ↓
+                 VPC Service Controls
+```
+- Cloud Endpoints for API management
+- Cloud Run for serverless compute
+- VPC-SC for data perimeter
+
+### Event-Driven Pattern
+```
+Source → Pub/Sub → Cloud Functions → Vertex AI
+                              ↓
+                    Firestore (results)
+```
+- Pub/Sub for reliable messaging
+- Cloud Functions for processing
+- Firestore for result storage
+
+### Batch Processing Pattern
+```
+GCS (input) → Workflows → Cloud Run → Vertex AI
+                      ↓
+               GCS (output)
+```
+- Workflows for orchestration
+- Cloud Run for batch processing
+- GCS for document storage
+
+## Security Architecture
+
+### Network Security
+- **VPC**: Shared VPC for healthcare workloads
+- **Private Google Access**: No public IPs needed
+- **VPC Service Controls**: Data exfiltration prevention
+- **Firewall Rules**: Least-privilege ingress/egress
+- **Private Service Connect**: Private endpoints
+
+### Identity & Access
+- **IAM Roles**: Predefined and custom roles
+- **Service Accounts**: Workload identity
+- **Secret Manager**: Credentials storage
+- **Cloud KMS**: Customer-managed encryption keys
+
+### Data Protection
+- **Encryption at Rest**: Default encryption, CMEK available
+- **Encryption in Transit**: TLS 1.2+ enforced
+- **Data Labels**: PHI classification
+- **Access Transparency**: Audit of Google access
+
+### Monitoring & Audit
+- **Cloud Audit Logs**: Admin and data access logs
+- **Cloud Logging**: Application logging
+- **Cloud Monitoring**: Metrics and alerting
+- **Security Command Center**: Vulnerability management
+- **Access Approval**: Explicit approval for support
+
+## IAM Role Examples
+
+### Vertex AI User Role
+```yaml
+# Custom role for Vertex AI inference
+title: "Vertex AI Inference User"
+description: "Can invoke Vertex AI models"
+includedPermissions:
+  - aiplatform.endpoints.predict
+  - aiplatform.endpoints.get
+  - aiplatform.models.get
+```
+
+### Cloud Run Invoker
+```yaml
+# For authenticated API access
+roles/run.invoker
+# Grants: run.routes.invoke
+```
+
+## Healthcare-Specific GCP Services
+
+### Additional Services for Healthcare
+- **Cloud Healthcare API**: FHIR, HL7v2, DICOM stores
+- **Healthcare Data Engine**: Data harmonization
+- **Medical Imaging Suite**: Radiology AI
+
+### Compliance Services
+- **Assured Workloads**: Compliance guardrails
+- **Access Transparency**: Audit Google access
+- **Compliance Reports Manager**: Audit reports
+- **Organization Policy**: Governance controls
+
+## VPC Service Controls
+
+### Perimeter Configuration
+```yaml
+# Example perimeter for healthcare
+perimeterType: PERIMETER_TYPE_REGULAR
+status:
+  resources:
+    - projects/healthcare-project
+  restrictedServices:
+    - aiplatform.googleapis.com
+    - healthcare.googleapis.com
+    - storage.googleapis.com
+  accessLevels:
+    - accessPolicies/POLICY_ID/accessLevels/corp-network
+```
+
+### Ingress/Egress Rules
+- Allow internal project access
+- Block external data access
+- Permit specific API calls only
+
+## Mermaid Diagram Components
+
+Use these node names for GCP architectures:
+- `endpoints[Cloud Endpoints]`
+- `apigw[API Gateway]`
+- `run[Cloud Run]`
+- `functions[Cloud Functions]`
+- `vertex[Vertex AI\nClaude]`
+- `gcs[(Cloud Storage)]`
+- `firestore[(Firestore)]`
+- `bigquery[(BigQuery)]`
+- `pubsub[[Pub/Sub]]`
+- `workflows[Workflows]`
+- `healthcare[(Healthcare API)]`
+- `nlp[Healthcare NLP]`
+- `secrets[Secret Manager]`
+- `kms[Cloud KMS]`
+- `logging[Cloud Logging]`
+- `vpc{VPC / VPC-SC}` (for subgraphs)
+
+## Sample Terraform Structure
+
+```hcl
+# Recommended module structure
+modules/
+├── networking/       # VPC, subnets, firewall
+├── security/         # IAM, KMS, Secret Manager
+├── compute/          # Cloud Run, Cloud Functions
+├── ai/              # Vertex AI configuration
+├── storage/         # GCS, Firestore
+└── monitoring/      # Logging, monitoring, alerting
+```

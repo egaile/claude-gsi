@@ -1,0 +1,149 @@
+# AWS Bedrock Healthcare Architecture Context
+
+## Core Services
+
+### Amazon Bedrock
+- **Service**: Fully managed foundation model service
+- **Claude Access**: Claude models available via Bedrock API
+- **Key Features**: Model inference, fine-tuning (select models), guardrails
+- **HIPAA**: Eligible service, requires BAA
+- **Pricing**: Pay per token (input/output)
+
+### Amazon HealthLake
+- **Service**: HIPAA-eligible FHIR data store
+- **Use Cases**: Centralized patient data, analytics, ML preparation
+- **Integration**: Native FHIR R4 support
+- **Key Features**: Automated data transformation, NLP for medical text
+
+### Amazon Comprehend Medical
+- **Service**: NLP for medical text
+- **Use Cases**: Entity extraction, ICD-10/RxNorm linking, PHI detection
+- **Integration**: Pre-processing for Bedrock, de-identification
+
+## Integration Patterns
+
+### API Gateway Pattern
+```
+Client → API Gateway → Lambda → Bedrock
+                    ↓
+              VPC Endpoint (PrivateLink)
+```
+- API Gateway handles authentication, rate limiting
+- Lambda in VPC for secure Bedrock access
+- VPC Endpoint keeps traffic off public internet
+
+### Event-Driven Pattern
+```
+Source → EventBridge → SQS → Lambda → Bedrock
+                            ↓
+                    DynamoDB (results)
+```
+- Decoupled, scalable processing
+- SQS for reliable delivery
+- DynamoDB for result storage
+
+### Batch Processing Pattern
+```
+S3 (input) → Step Functions → Lambda → Bedrock
+                           ↓
+                    S3 (output)
+```
+- Step Functions orchestrates workflow
+- Handles retries and error handling
+- S3 for large document processing
+
+## Security Architecture
+
+### Network Security
+- **VPC**: Isolated network for healthcare workloads
+- **Private Subnets**: No direct internet access
+- **VPC Endpoints**: PrivateLink for AWS services
+- **Security Groups**: Least-privilege access
+- **NACLs**: Additional network filtering
+
+### Identity & Access
+- **IAM Roles**: Service-specific roles with minimal permissions
+- **IAM Policies**: Explicit deny for sensitive actions
+- **Secrets Manager**: API keys and credentials
+- **KMS**: Customer-managed keys for encryption
+
+### Data Protection
+- **Encryption at Rest**: S3 SSE-KMS, DynamoDB encryption
+- **Encryption in Transit**: TLS 1.2+ enforced
+- **Data Classification**: Tags for PHI identification
+- **Access Logging**: CloudTrail, S3 access logs
+
+### Monitoring & Audit
+- **CloudTrail**: API activity logging
+- **CloudWatch Logs**: Application logging
+- **CloudWatch Metrics**: Performance and usage
+- **AWS Config**: Configuration compliance
+- **Security Hub**: Centralized security findings
+
+## IAM Policy Examples
+
+### Bedrock Invoke Policy
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-*"
+    }
+  ]
+}
+```
+
+### Lambda VPC Policy
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DeleteNetworkInterface"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+## Healthcare-Specific AWS Services
+
+### Additional Services for Healthcare
+- **AWS HealthImaging**: DICOM image storage (radiology)
+- **AWS HealthScribe**: Medical transcription
+- **Amazon Transcribe Medical**: Speech to text for clinical
+- **Amazon Textract**: Document extraction
+
+### Compliance Services
+- **AWS Artifact**: BAA and compliance reports
+- **AWS Audit Manager**: Automated evidence collection
+- **Amazon Macie**: PHI discovery in S3
+
+## Mermaid Diagram Components
+
+Use these node names for AWS architectures:
+- `apigw[API Gateway]`
+- `lambda[Lambda]`
+- `bedrock[Amazon Bedrock\nClaude]`
+- `s3[(S3 Bucket)]`
+- `dynamodb[(DynamoDB)]`
+- `sqs[[SQS Queue]]`
+- `eventbridge[[EventBridge]]`
+- `stepfn[Step Functions]`
+- `healthlake[(HealthLake)]`
+- `comprehend[Comprehend Medical]`
+- `secrets[Secrets Manager]`
+- `kms[KMS]`
+- `cloudwatch[CloudWatch]`
+- `vpc{VPC}` (for subgraphs)
