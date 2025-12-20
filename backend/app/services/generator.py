@@ -5,6 +5,7 @@ Integrates with Claude API to generate healthcare reference architectures.
 """
 
 import json
+import logging
 from pathlib import Path
 
 import anthropic
@@ -15,6 +16,11 @@ from app.models import (
     UseCase,
     CloudPlatform,
 )
+
+logger = logging.getLogger(__name__)
+
+# Constants
+MAX_RESPONSE_SIZE = 500_000  # 500KB limit for Claude responses
 
 
 class ArchitectureGenerator:
@@ -185,12 +191,13 @@ Generate the JSON response now:"""
 
     async def generate(self, request: ArchitectureRequest) -> ArchitectureResponse:
         """Generate architecture using Claude."""
-        
+
         user_prompt = self._build_user_prompt(request)
+        logger.debug(f"Built prompt for use_case={request.use_case}, platform={request.cloud_platform}")
 
         message = self.client.messages.create(
             model=self.model,
-            max_tokens=16384,
+            max_tokens=8192,  # Reduced from 16384 to control costs
             system=self.system_prompt,
             messages=[
                 {"role": "user", "content": user_prompt}
@@ -199,10 +206,16 @@ Generate the JSON response now:"""
 
         # Check if response was truncated
         if message.stop_reason == "max_tokens":
-            print(f"Warning: Response was truncated (max_tokens reached)")
+            logger.warning("Response was truncated due to max_tokens limit")
+            raise ValueError("Response exceeded maximum length. Please try a simpler configuration.")
 
         # Extract the response text
         response_text = message.content[0].text
+
+        # Validate response size
+        if len(response_text) > MAX_RESPONSE_SIZE:
+            logger.error(f"Response too large: {len(response_text)} bytes")
+            raise ValueError("Response too large")
 
         # Clean up the response if needed
         response_text = response_text.strip()
@@ -218,7 +231,15 @@ Generate the JSON response now:"""
         try:
             data = json.loads(response_text)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse Claude response as JSON: {e}")
+            logger.error(f"Failed to parse Claude response as JSON: {e}")
+            raise ValueError("Invalid response format from AI model")
+
+        # Validate required keys exist
+        required_keys = ["architecture", "compliance", "deployment", "sampleCode"]
+        if not all(key in data for key in required_keys):
+            missing = [k for k in required_keys if k not in data]
+            logger.error(f"Missing required keys in response: {missing}")
+            raise ValueError("Incomplete response from AI model")
 
         # Validate and return
         return ArchitectureResponse.model_validate(data)

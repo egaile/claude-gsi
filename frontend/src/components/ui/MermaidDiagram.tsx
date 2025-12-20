@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils';
 mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
-  securityLevel: 'loose',
+  securityLevel: 'strict', // Prevent XSS attacks through diagram content
   fontFamily: 'Inter, system-ui, sans-serif',
 });
 

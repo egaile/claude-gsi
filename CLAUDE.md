@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Context7 Integration
+
+Always use Context7 when code generation, setup or configuration steps, or library/API documentation is needed. Automatically use the Context7 MCP tools to resolve library IDs and get library docs without requiring explicit requests.
+
 ## Project Overview
 
 GSI Reference Architecture Generator - A tool that uses Claude to generate healthcare-specific deployment architectures for Global System Integrator (GSI) partners. Demonstrates the product while building tools to help partners sell it.
