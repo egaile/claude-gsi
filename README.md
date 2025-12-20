@@ -24,7 +24,7 @@ This tool generates 80% of a reference architecture in seconds—including indus
 
 ![Architecture Generator Demo](docs/demo.gif)
 
-**Try it**: [gsi-arch-generator.vercel.app](https://claude-gsi.vercel.app/)
+**Try it**: [claude-gsi.vercel.app](https://claude-gsi.vercel.app/)
 
 ## Features
 
