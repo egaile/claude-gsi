@@ -200,7 +200,7 @@ Generate the JSON response now:"""
 
         message = self.client.messages.create(
             model=self.model,
-            max_tokens=16384,
+            max_tokens=32768,
             system=[{
                 "type": "text",
                 "text": self.system_prompt,
