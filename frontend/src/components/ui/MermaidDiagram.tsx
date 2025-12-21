@@ -30,9 +30,11 @@ export function MermaidDiagram({ diagram, className }: MermaidDiagramProps) {
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         const { svg: renderedSvg } = await mermaid.render(id, diagram);
         // Sanitize SVG to prevent XSS attacks (defense in depth)
+        // Allow foreignObject and related elements needed for Mermaid text labels
         const sanitizedSvg = DOMPurify.sanitize(renderedSvg, {
           USE_PROFILES: { svg: true, svgFilters: true },
-          ADD_TAGS: ['use'],
+          ADD_TAGS: ['foreignObject', 'use'],
+          ADD_ATTR: ['dominant-baseline', 'xlink:href', 'requiredExtensions'],
         });
         setSvg(sanitizedSvg);
         setError(null);
