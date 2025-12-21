@@ -129,10 +129,32 @@ class SampleCode(BaseModel):
 
 class ArchitectureResponse(BaseModel):
     """Complete response with generated architecture."""
-    
+
     architecture: Architecture
     compliance: Compliance
     deployment: Deployment
+    sample_code: SampleCode = Field(alias="sampleCode")
+
+    class Config:
+        populate_by_name = True
+        by_alias = True
+
+
+# Code generation models
+class CodeGenerationRequest(BaseModel):
+    """Request body for code generation."""
+
+    use_case: UseCase = Field(alias="useCase")
+    cloud_platform: CloudPlatform = Field(alias="cloudPlatform")
+    architecture_summary: str = Field(alias="architectureSummary")
+
+    class Config:
+        populate_by_name = True
+
+
+class CodeGenerationResponse(BaseModel):
+    """Response with generated sample code."""
+
     sample_code: SampleCode = Field(alias="sampleCode")
 
     class Config:

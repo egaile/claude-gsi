@@ -7,13 +7,17 @@ Integrates with Claude API to generate healthcare reference architectures.
 import json
 import logging
 import os
+import re
 from pathlib import Path
+from typing import AsyncGenerator, Optional
 
 import anthropic
 
 from app.models import (
     ArchitectureRequest,
     ArchitectureResponse,
+    CodeGenerationRequest,
+    CodeGenerationResponse,
     UseCase,
     CloudPlatform,
 )
@@ -250,3 +254,181 @@ Generate the JSON response now:"""
 
         # Validate and return
         return ArchitectureResponse.model_validate(data)
+
+    def _build_streaming_prompt(self, request: ArchitectureRequest) -> str:
+        """Build the user prompt for streaming (excludes sampleCode)."""
+        use_case_context = self._get_use_case_context(request.use_case)
+        cloud_context = self._get_cloud_context(request.cloud_platform)
+
+        return f"""Generate a healthcare reference architecture for:
+- Use Case: {request.use_case.value}
+- Cloud Platform: {request.cloud_platform.value}
+- Integration Pattern: {request.integration_pattern.value}
+- Data Classification: {request.data_classification.value}
+- Scale Tier: {request.scale_tier.value}
+
+## Healthcare Context
+{self.healthcare_context}
+
+{use_case_context}
+
+## Cloud Platform Context
+{cloud_context}
+
+Return valid JSON with this structure (NO sampleCode - it will be generated separately):
+{{
+  "architecture": {{
+    "mermaidDiagram": "flowchart TD...",
+    "components": [{{"name": "", "service": "", "purpose": "", "phiTouchpoint": true}}],
+    "dataFlows": [{{"from": "", "to": "", "data": "", "encrypted": true}}]
+  }},
+  "compliance": {{
+    "checklist": [{{"category": "technical", "requirement": "", "implementation": "", "priority": "required"}}],
+    "baaRequirements": ""
+  }},
+  "deployment": {{
+    "steps": [],
+    "iamPolicies": [],
+    "networkConfig": "",
+    "monitoringSetup": ""
+  }}
+}}
+
+Return ONLY the JSON, no markdown or explanation."""
+
+    async def generate_stream(self, request: ArchitectureRequest) -> AsyncGenerator[dict, None]:
+        """Stream architecture generation with SSE events (excludes sampleCode)."""
+        system_prompt_streaming = """You are an expert Healthcare IT Solutions Architect. Generate reference architectures with Mermaid diagrams, components, compliance checklists, and deployment steps in JSON format.
+
+IMPORTANT: Do NOT include sampleCode in your response. Code samples will be generated separately on demand."""
+
+        user_prompt = self._build_streaming_prompt(request)
+        accumulated_text = ""
+        emitted_sections = set()
+
+        try:
+            with self.client.messages.stream(
+                model=self.model,
+                max_tokens=24576,
+                system=[{
+                    "type": "text",
+                    "text": system_prompt_streaming,
+                    "cache_control": {"type": "ephemeral"}
+                }],
+                messages=[{"role": "user", "content": user_prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    accumulated_text += text
+
+                    # Try to extract and emit completed sections
+                    for section_name in ["architecture", "compliance", "deployment"]:
+                        if section_name not in emitted_sections:
+                            section_data = self._try_extract_section(accumulated_text, section_name)
+                            if section_data is not None:
+                                emitted_sections.add(section_name)
+                                yield {
+                                    "event": "section",
+                                    "data": json.dumps({
+                                        "section": section_name,
+                                        "data": section_data
+                                    })
+                                }
+
+            # Emit completion event
+            yield {"event": "done", "data": json.dumps({"status": "complete"})}
+
+        except Exception as e:
+            logger.error(f"Streaming error: {e}")
+            yield {"event": "error", "data": json.dumps({"error": str(e)})}
+
+    def _try_extract_section(self, text: str, section_name: str) -> Optional[dict]:
+        """Try to extract a complete JSON section from accumulated text."""
+        pattern = rf'"{section_name}"\s*:\s*\{{'
+        match = re.search(pattern, text)
+        if not match:
+            return None
+
+        start_idx = match.end() - 1
+        brace_count = 0
+        in_string = False
+        escape_next = False
+
+        for i, char in enumerate(text[start_idx:], start_idx):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    section_text = text[start_idx:i + 1]
+                    try:
+                        return json.loads(section_text)
+                    except json.JSONDecodeError:
+                        return None
+
+        return None
+
+    async def generate_code(self, request: CodeGenerationRequest) -> CodeGenerationResponse:
+        """Generate sample code based on architecture context."""
+        system_prompt_code = """You are an expert Healthcare IT developer. Generate production-quality sample code for integrating with healthcare AI architectures. Include proper error handling, logging, and PHI compliance comments."""
+
+        user_prompt = f"""Generate production-quality sample code for a healthcare AI integration:
+
+Use Case: {request.use_case.value}
+Cloud Platform: {request.cloud_platform.value}
+Architecture Summary: {request.architecture_summary}
+
+Return JSON with this structure:
+{{
+  "sampleCode": {{
+    "python": "# Production Python code with error handling, logging, PHI compliance...",
+    "typescript": "// Production TypeScript code with types, error handling, PHI compliance..."
+  }}
+}}
+
+Requirements:
+- Include proper error handling and logging
+- Add PHI compliance comments where relevant
+- Use cloud-specific SDK (boto3 for AWS, google-cloud for GCP)
+- Include authentication and rate limiting
+- Follow security best practices
+
+Return ONLY the JSON, no markdown or explanation."""
+
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=16384,
+            system=[{
+                "type": "text",
+                "text": system_prompt_code,
+                "cache_control": {"type": "ephemeral"}
+            }],
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+
+        response_text = message.content[0].text.strip()
+
+        # Clean markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("\n", 1)[1]
+        if response_text.endswith("```"):
+            response_text = response_text.rsplit("```", 1)[0]
+        response_text = response_text.strip()
+
+        try:
+            data = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse code response as JSON: {e}")
+            raise ValueError("Invalid response format from AI model")
+
+        return CodeGenerationResponse.model_validate(data)

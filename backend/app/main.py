@@ -17,9 +17,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from sse_starlette.sse import EventSourceResponse
 import anthropic
 
-from app.models import ArchitectureRequest, ArchitectureResponse
+from app.models import (
+    ArchitectureRequest,
+    ArchitectureResponse,
+    CodeGenerationRequest,
+    CodeGenerationResponse,
+)
 from app.services.generator import ArchitectureGenerator
 
 # Configure logging with structured format for audit trail
@@ -190,6 +196,71 @@ async def generate_architecture(request: Request, arch_request: ArchitectureRequ
         raise HTTPException(
             status_code=500,
             detail="Failed to generate architecture. Please try again."
+        )
+
+
+@app.post("/api/generate-architecture-stream")
+@limiter.limit("10/minute")
+async def generate_architecture_stream(request: Request, arch_request: ArchitectureRequest):
+    """
+    Stream architecture generation with Server-Sent Events.
+
+    Returns sections progressively as they complete:
+    - architecture: Mermaid diagram and components
+    - compliance: HIPAA checklist and BAA requirements
+    - deployment: Steps, IAM policies, network config
+
+    Note: Sample code is NOT included - use /api/generate-code separately.
+    """
+    if generator is None:
+        logger.error("Generator not initialized when handling streaming request")
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    logger.info(f"Starting streaming generation for use_case={arch_request.use_case}, platform={arch_request.cloud_platform}")
+
+    async def event_generator():
+        try:
+            async for event in generator.generate_stream(arch_request):
+                yield event
+        except Exception as e:
+            logger.exception("Error during streaming generation")
+            yield {"event": "error", "data": '{"error": "Failed to generate architecture"}'}
+
+    return EventSourceResponse(event_generator())
+
+
+@app.post("/api/generate-code", response_model=CodeGenerationResponse)
+@limiter.limit("10/minute")
+async def generate_code(request: Request, code_request: CodeGenerationRequest):
+    """
+    Generate sample integration code on demand.
+
+    Call this after receiving the architecture to get Python and TypeScript
+    integration examples tailored to your configuration.
+    """
+    if generator is None:
+        logger.error("Generator not initialized when handling code request")
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    try:
+        logger.info(f"Generating code for use_case={code_request.use_case}, platform={code_request.cloud_platform}")
+        response = await generator.generate_code(code_request)
+        logger.info("Code generation completed successfully")
+        return response
+    except ValueError as e:
+        logger.warning(f"Code generation validation error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid response format from AI model")
+    except anthropic.APIConnectionError:
+        logger.error("API Connection Error during code generation")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
+    except anthropic.RateLimitError:
+        logger.warning("Anthropic rate limit exceeded during code generation")
+        raise HTTPException(status_code=429, detail="Service busy. Please try again later.")
+    except Exception:
+        logger.exception("Unexpected error during code generation")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate code. Please try again."
         )
 
 
