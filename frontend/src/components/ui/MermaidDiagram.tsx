@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
 import { cn } from '../../lib/utils';
 
 // Initialize mermaid once at module level
@@ -28,7 +29,12 @@ export function MermaidDiagram({ diagram, className }: MermaidDiagramProps) {
         // Generate unique ID for this render
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         const { svg: renderedSvg } = await mermaid.render(id, diagram);
-        setSvg(renderedSvg);
+        // Sanitize SVG to prevent XSS attacks (defense in depth)
+        const sanitizedSvg = DOMPurify.sanitize(renderedSvg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          ADD_TAGS: ['use'],
+        });
+        setSvg(sanitizedSvg);
         setError(null);
       } catch (err) {
         console.error('Mermaid rendering error:', err);

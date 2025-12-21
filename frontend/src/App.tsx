@@ -51,7 +51,7 @@ function App() {
             <InfoPanel />
           </div>
         ) : state.status === 'success' && state.response ? (
-          <ResultsDashboard response={state.response} onReset={handleReset} />
+          <ResultsDashboard response={state.response} request={formData} onReset={handleReset} />
         ) : (
           <div className="card p-6 border-red-200 bg-red-50">
             <h2 className="text-lg font-semibold text-red-900 mb-2">

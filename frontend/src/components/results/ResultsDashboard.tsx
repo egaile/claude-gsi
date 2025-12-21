@@ -4,15 +4,16 @@ import { ArchitectureTab } from './ArchitectureTab';
 import { ComplianceTab } from './ComplianceTab';
 import { DeploymentTab } from './DeploymentTab';
 import { CodeTab } from './CodeTab';
-import type { ArchitectureResponse } from '../../lib/types';
+import type { ArchitectureRequest, ArchitectureResponse } from '../../lib/types';
 import { downloadFile } from '../../lib/utils';
 
 interface ResultsDashboardProps {
   response: ArchitectureResponse;
+  request: ArchitectureRequest;
   onReset: () => void;
 }
 
-export function ResultsDashboard({ response, onReset }: ResultsDashboardProps) {
+export function ResultsDashboard({ response, request, onReset }: ResultsDashboardProps) {
   const tabs = [
     { id: 'architecture', label: 'Architecture', icon: <Layers className="w-4 h-4" /> },
     { id: 'compliance', label: 'Compliance', icon: <Shield className="w-4 h-4" /> },
@@ -21,7 +22,7 @@ export function ResultsDashboard({ response, onReset }: ResultsDashboardProps) {
   ];
 
   const handleExportMarkdown = () => {
-    const markdown = generateMarkdown(response);
+    const markdown = generateMarkdown(response, request);
     downloadFile(markdown, 'architecture-reference.md', 'text/markdown');
   };
 
@@ -61,10 +62,20 @@ export function ResultsDashboard({ response, onReset }: ResultsDashboardProps) {
   );
 }
 
-function generateMarkdown(response: ArchitectureResponse): string {
+function generateMarkdown(response: ArchitectureResponse, request: ArchitectureRequest): string {
   const { architecture, compliance, deployment, sampleCode } = response;
+  const timestamp = new Date().toISOString();
 
   return `# Generated Reference Architecture
+
+> **Generated**: ${timestamp}
+>
+> **Configuration**:
+> - Use Case: ${request.useCase}
+> - Cloud Platform: ${request.cloudPlatform}
+> - Integration Pattern: ${request.integrationPattern}
+> - Data Classification: ${request.dataClassification}
+> - Scale Tier: ${request.scaleTier}
 
 ## Architecture Diagram
 

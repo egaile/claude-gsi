@@ -6,6 +6,7 @@ Integrates with Claude API to generate healthcare reference architectures.
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import anthropic
@@ -27,8 +28,10 @@ class ArchitectureGenerator:
     """Generates healthcare reference architectures using Claude."""
 
     def __init__(self, api_key: str):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-20250514"
+        # Add timeout to prevent hanging requests (120 seconds)
+        self.client = anthropic.Anthropic(api_key=api_key, timeout=120.0)
+        # Model configurable via env var with sensible default
+        self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
         self.prompts_dir = Path(__file__).parent.parent.parent / "prompts"
         self.templates_dir = Path(__file__).parent.parent.parent / "templates"
         

@@ -1,22 +1,53 @@
 """
-GSI Reference Architecture Generator - Vercel Serverless Entry Point
+Reference Architecture Generator - Vercel Serverless Entry Point
 All code in single file for Vercel compatibility.
 """
 
 import json
 import logging
 import os
+import time
+import uuid
+from collections import defaultdict
 from enum import Enum
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import anthropic
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with structured format for audit trail
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Simple in-memory rate limiter for serverless (resets on cold start)
+# For production, consider Upstash Redis or Vercel KV
+class SimpleRateLimiter:
+    def __init__(self, requests_per_minute: int = 10):
+        self.requests_per_minute = requests_per_minute
+        self.requests: dict[str, list[float]] = defaultdict(list)
+
+    def is_allowed(self, client_ip: str) -> bool:
+        now = time.time()
+        minute_ago = now - 60
+
+        # Clean old requests
+        self.requests[client_ip] = [
+            ts for ts in self.requests[client_ip] if ts > minute_ago
+        ]
+
+        if len(self.requests[client_ip]) >= self.requests_per_minute:
+            return False
+
+        self.requests[client_ip].append(now)
+        return True
+
+rate_limiter = SimpleRateLimiter(requests_per_minute=10)
 
 # Constants
 MAX_RESPONSE_SIZE = 500_000  # 500KB limit for Claude responses
@@ -145,8 +176,10 @@ SYSTEM_PROMPT = """You are an expert Healthcare IT Solutions Architect. Generate
 
 class ArchitectureGenerator:
     def __init__(self, api_key: str):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-20250514"
+        # Add timeout to prevent hanging requests (120 seconds)
+        self.client = anthropic.Anthropic(api_key=api_key, timeout=120.0)
+        # Model configurable via env var with sensible default
+        self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
 
     async def generate(self, request: ArchitectureRequest) -> ArchitectureResponse:
         user_prompt = f"""Generate a complete healthcare reference architecture for:
@@ -226,20 +259,59 @@ Return ONLY the JSON, no markdown or explanation."""
 
 # ============= APP =============
 
-app = FastAPI(title="GSI Reference Architecture Generator")
+app = FastAPI(title="Reference Architecture Generator")
 
 # Configure CORS from environment variable (comma-separated origins)
 # Defaults to common development/production origins
 cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,https://claude-gsi.vercel.app")
 cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
 
+# Security: Prevent wildcard with credentials (CORS vulnerability)
+has_wildcard = "*" in cors_origins
+if has_wildcard:
+    logger.warning("CORS wildcard detected - disabling credentials for security")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=not has_wildcard,  # Disable credentials if wildcard present
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # HTTPS enforcement
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Content Security Policy
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
+
+
+# Audit logging middleware
+@app.middleware("http")
+async def audit_log(request: Request, call_next):
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
+
+    # Log request
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info(f"[{request_id}] Request: {request.method} {request.url.path} from {client_ip}")
+
+    response = await call_next(request)
+
+    # Log response
+    duration_ms = (time.time() - start_time) * 1000
+    logger.info(f"[{request_id}] Response: {response.status_code} in {duration_ms:.2f}ms")
+
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 _generator = None
 
@@ -271,28 +343,46 @@ async def health_check():
 
 
 @app.post("/api/generate-architecture", response_model=ArchitectureResponse)
-async def generate_architecture(request: ArchitectureRequest):
+async def generate_architecture(request: ArchitectureRequest, http_request: Request):
     """Generate a healthcare reference architecture using Claude."""
+    # Rate limiting check
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        logger.warning(f"Rate limit exceeded for {client_ip}")
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please wait before making another request."
+        )
+
     try:
         generator = get_generator()
         response = await generator.generate(request)
         return response
     except ValueError as e:
-        # Input validation errors - return 400
+        # Sanitize validation errors - only show safe messages
+        error_msg = str(e)
+        safe_messages = [
+            "Response exceeded maximum length",
+            "Response too large",
+            "Invalid response format from AI model",
+            "Incomplete response from AI model",
+        ]
+        if not any(msg in error_msg for msg in safe_messages):
+            error_msg = "Invalid request parameters"
         logger.warning(f"Validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except anthropic.APIConnectionError as e:
-        logger.error(f"API Connection Error: {e}")
+        raise HTTPException(status_code=400, detail=error_msg)
+    except anthropic.APIConnectionError:
+        logger.error("API Connection Error")
         raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
-    except anthropic.AuthenticationError as e:
-        logger.error(f"Authentication Error: {e}")
+    except anthropic.AuthenticationError:
+        logger.error("Authentication Error - check API key configuration")
         raise HTTPException(status_code=500, detail="Service configuration error.")
-    except anthropic.RateLimitError as e:
-        logger.warning(f"Rate limit exceeded: {e}")
-        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    except anthropic.RateLimitError:
+        logger.warning("Anthropic rate limit exceeded")
+        raise HTTPException(status_code=429, detail="Service busy. Please try again later.")
     except anthropic.APIStatusError as e:
-        logger.error(f"API Status Error: {e.status_code} - {e.message}")
+        logger.error(f"API Status Error: {e.status_code}")
         raise HTTPException(status_code=500, detail="Failed to generate architecture.")
-    except Exception as e:
-        logger.exception(f"Unexpected error: {type(e).__name__}: {e}")
+    except Exception:
+        logger.exception("Unexpected error during generation")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")

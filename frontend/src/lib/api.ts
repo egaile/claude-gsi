@@ -1,4 +1,5 @@
 import type { ArchitectureRequest, ArchitectureResponse } from './types';
+import { ArchitectureResponseSchema } from './schema';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 const REQUEST_TIMEOUT_MS = 120000; // 2 minute timeout for generation requests
@@ -66,7 +67,20 @@ export async function generateArchitecture(
     );
   }
 
-  return response.json();
+  const data = await response.json();
+
+  // Validate response structure at runtime using Zod
+  const parseResult = ArchitectureResponseSchema.safeParse(data);
+  if (!parseResult.success) {
+    console.error('API response validation failed:', parseResult.error);
+    throw new ApiError(
+      'Invalid response format from server',
+      500,
+      parseResult.error.issues
+    );
+  }
+
+  return parseResult.data as ArchitectureResponse;
 }
 
 export async function healthCheck(): Promise<{ status: string }> {
