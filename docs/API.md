@@ -1,6 +1,6 @@
 # API Reference
 
-## GSI Reference Architecture Generator API
+## Reference Architecture Generator API
 
 Base URL: `http://localhost:8000` (development) or your deployed backend URL.
 
@@ -148,7 +148,7 @@ POST /api/generate-architecture
 | `compliance.checklist[].category` | string | `administrative`, `physical`, or `technical` |
 | `compliance.checklist[].requirement` | string | The compliance requirement |
 | `compliance.checklist[].implementation` | string | How to implement it |
-| `compliance.checklist[].priority` | string | `required` or `recommended` |
+| `compliance.checklist[].priority` | string | `required`, `recommended`, or `addressable` |
 | `compliance.baaRequirements` | string | Business Associate Agreement guidance |
 | `deployment.steps` | array | Ordered deployment instructions |
 | `deployment.iamPolicies` | array | IAM policy JSON strings |
@@ -165,6 +165,114 @@ POST /api/generate-architecture
 | 400 | Invalid request (validation error) |
 | 500 | Server error (Claude API failure, parsing error) |
 | 503 | Service not initialized |
+
+---
+
+### Generate Architecture (Streaming)
+
+Stream architecture generation with Server-Sent Events (SSE). Returns sections progressively as they complete. Does NOT include sample code (use the separate code generation endpoint).
+
+```
+POST /api/generate-architecture-stream
+```
+
+**Request Headers**
+
+| Header | Value |
+|--------|-------|
+| Content-Type | application/json |
+
+**Request Body**
+
+Same as `/api/generate-architecture`.
+
+**Response**
+
+The response is a stream of Server-Sent Events:
+
+```
+event: section
+data: {"section": "architecture", "data": {...}}
+
+event: section
+data: {"section": "compliance", "data": {...}}
+
+event: section
+data: {"section": "deployment", "data": {...}}
+
+event: done
+data: {"status": "complete"}
+```
+
+**Event Types**
+
+| Event | Description |
+|-------|-------------|
+| `section` | A completed section (architecture, compliance, or deployment) |
+| `done` | Stream complete |
+| `error` | An error occurred |
+
+**Status Codes**
+
+| Code | Description |
+|------|-------------|
+| 200 | Streaming started successfully |
+| 429 | Rate limit exceeded |
+| 500 | Server error |
+
+---
+
+### Generate Code
+
+Generate sample code based on an architecture configuration. Call this after receiving the architecture to get Python and TypeScript integration examples.
+
+```
+POST /api/generate-code
+```
+
+**Request Headers**
+
+| Header | Value |
+|--------|-------|
+| Content-Type | application/json |
+
+**Request Body**
+
+```json
+{
+  "useCase": "clinical-documentation",
+  "cloudPlatform": "aws-bedrock",
+  "architectureSummary": "Components: API Gateway (Amazon API Gateway), Claude Service (AWS Bedrock). PHI touchpoints: AWS Bedrock."
+}
+```
+
+**Request Fields**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `useCase` | string | Yes | Same values as generate-architecture |
+| `cloudPlatform` | string | Yes | Same values as generate-architecture |
+| `architectureSummary` | string | Yes | Brief description of the architecture components |
+
+**Response**
+
+```json
+{
+  "sampleCode": {
+    "python": "import anthropic\n\nclient = anthropic.Anthropic()\n...",
+    "typescript": "import Anthropic from '@anthropic-ai/sdk';\n..."
+  }
+}
+```
+
+**Status Codes**
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 400 | Invalid request |
+| 429 | Rate limit exceeded |
+| 500 | Server error |
 
 ---
 
@@ -267,11 +375,24 @@ FastAPI automatically generates OpenAPI documentation. When the backend is runni
 
 ## Rate Limiting
 
-The API does not implement rate limiting. Consider:
+The API implements in-memory rate limiting:
 
-1. Claude API has its own rate limits based on your plan
-2. For production, implement rate limiting at the API Gateway level
-3. Monitor usage to avoid unexpected costs
+| Limit | Value |
+|-------|-------|
+| Requests per minute | 10 per IP |
+| Reset | On serverless cold start |
+
+**Rate Limit Response**
+
+```json
+{
+  "detail": "Rate limit exceeded. Please wait before making another request."
+}
+```
+
+**Status Code**: 429 Too Many Requests
+
+For production, consider using persistent rate limiting with Redis or Vercel KV.
 
 ---
 
@@ -279,10 +400,10 @@ The API does not implement rate limiting. Consider:
 
 | Operation | Timeout |
 |-----------|---------|
-| Claude API call | ~30 seconds (SDK default) |
-| Total request | Varies by deployment |
+| Claude API call | 120 seconds |
+| Full generation | ~90 seconds |
+| Streaming generation | ~45-50 seconds |
+| Code generation | ~30-40 seconds |
+| Frontend request | 180 seconds (streaming), 120 seconds (non-streaming) |
 
-For long-running requests, consider implementing:
-- Client-side timeout handling
-- Progress indicators
-- Retry logic with exponential backoff
+The streaming endpoint reduces perceived latency by showing content as it generates.

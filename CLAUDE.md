@@ -8,7 +8,7 @@ Always use Context7 when code generation, setup or configuration steps, or libra
 
 ## Project Overview
 
-GSI Reference Architecture Generator - A tool that uses Claude to generate healthcare-specific deployment architectures for Global System Integrator (GSI) partners. Demonstrates the product while building tools to help partners sell it.
+Reference Architecture Generator - A tool that uses Claude to generate healthcare-specific deployment architectures. Demonstrates the product while building tools that help partners succeed with Claude.
 
 ## Development Commands
 
@@ -43,9 +43,14 @@ pytest -x            # Stop on first failure
 **Frontend** → **Backend** → **Claude API**
 
 ### Backend Flow
-1. `app/main.py` - FastAPI entry, CORS config, `/api/generate-architecture` endpoint
+1. `api/index.py` - Vercel serverless entry point with all endpoints
 2. `app/models.py` - Pydantic request/response models with camelCase aliases
 3. `app/services/generator.py` - `ArchitectureGenerator` class orchestrates prompt building and Claude calls
+
+### API Endpoints
+- `POST /api/generate-architecture` - Full generation (includes sample code)
+- `POST /api/generate-architecture-stream` - SSE streaming (excludes sample code for faster response)
+- `POST /api/generate-code` - On-demand code generation
 
 ### Prompt Assembly
 The generator builds prompts from files in `backend/prompts/`:
@@ -55,13 +60,15 @@ The generator builds prompts from files in `backend/prompts/`:
 - `templates/example_output.md` - Example JSON structure for few-shot guidance
 
 ### Frontend State
-`App.tsx` manages `GenerationState` (idle → loading → success/error) and `ArchitectureRequest` form data. API client in `src/lib/api.ts`.
+`App.tsx` manages `StreamingState` (idle → streaming → success/error) with progressive section loading. Sections (architecture, compliance, deployment) load as they stream in; sample code is generated on-demand. API client in `src/lib/api.ts`.
 
 ## Key Technical Details
 
-- **Model**: Uses `claude-sonnet-4-20250514` in `generator.py:25`
+- **Model**: Uses `claude-sonnet-4-20250514` (configurable via `ANTHROPIC_MODEL` env var)
+- **Streaming**: Uses SSE (Server-Sent Events) with `sse-starlette` for progressive response
 - **Response parsing**: Claude returns raw JSON; generator strips markdown fences if present
 - **CORS**: Configured via `CORS_ORIGINS` env var (comma-separated)
+- **Rate limiting**: 10 requests/minute per IP (in-memory, resets on cold start)
 - **Pydantic aliases**: Models use `Field(alias="camelCase")` with `populate_by_name = True`
 
 ## Environment Variables
@@ -77,12 +84,17 @@ ANTHROPIC_API_KEY=sk-ant-...
 CORS_ORIGINS=http://localhost:5173
 ```
 
-## API Endpoint
+## API Endpoints
 
-`POST /api/generate-architecture`
+### `POST /api/generate-architecture`
+Full generation including sample code. Response time: ~90 seconds.
+
+### `POST /api/generate-architecture-stream`
+SSE streaming endpoint. Returns sections progressively (architecture → compliance → deployment). Excludes sample code for faster response (~45-50 seconds).
+
+### `POST /api/generate-code`
+On-demand code generation. Takes use case, cloud platform, and architecture summary. Returns Python and TypeScript samples (~30-40 seconds).
 
 Request selects: use case, cloud platform, integration pattern, data classification, scale tier.
 
-Response includes: Mermaid diagram, components with PHI touchpoints, HIPAA compliance checklist, deployment steps, sample code (Python/TypeScript).
-
-See `backend/app/models.py` for full schema.
+See `backend/app/models.py` and `api/index.py` for full schema.
