@@ -53,4 +53,18 @@ export const ArchitectureResponseSchema = z.object({
   sampleCode: SampleCodeSchema,
 });
 
+// Partial response schema (without sampleCode) for streaming
+export const ArchitectureResponsePartialSchema = z.object({
+  architecture: ArchitectureSchema,
+  compliance: ComplianceSchema,
+  deployment: DeploymentSchema,
+});
+
+// Code generation response schema
+export const CodeGenerationResponseSchema = z.object({
+  sampleCode: SampleCodeSchema,
+});
+
 export type ValidatedArchitectureResponse = z.infer<typeof ArchitectureResponseSchema>;
+export type ValidatedArchitectureResponsePartial = z.infer<typeof ArchitectureResponsePartialSchema>;
+export type ValidatedCodeGenerationResponse = z.infer<typeof CodeGenerationResponseSchema>;

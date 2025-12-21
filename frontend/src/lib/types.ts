@@ -73,11 +73,36 @@ export interface ArchitectureResponse {
   sampleCode: SampleCode;
 }
 
+// Partial response (without sampleCode) for streaming
+export interface ArchitectureResponsePartial {
+  architecture: Architecture;
+  compliance: Compliance;
+  deployment: Deployment;
+}
+
+// Code generation types
+export interface CodeGenerationRequest {
+  useCase: UseCase;
+  cloudPlatform: CloudPlatform;
+  architectureSummary: string;
+}
+
 // UI state types
 export interface GenerationState {
   status: 'idle' | 'loading' | 'success' | 'error';
   error?: string;
   response?: ArchitectureResponse;
+}
+
+// Streaming state - tracks which sections have loaded
+export interface StreamingState {
+  status: 'idle' | 'streaming' | 'success' | 'error';
+  architecture?: Architecture;
+  compliance?: Compliance;
+  deployment?: Deployment;
+  sampleCode?: SampleCode;
+  codeLoading?: boolean;
+  error?: string;
 }
 
 // Form configuration

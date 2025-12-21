@@ -3,19 +3,22 @@ Reference Architecture Generator - Vercel Serverless Entry Point
 All code in single file for Vercel compatibility.
 """
 
+import asyncio
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from collections import defaultdict
 from enum import Enum
-from typing import Literal
+from typing import AsyncGenerator, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
 import anthropic
 
 # Configure logging with structured format for audit trail
@@ -167,9 +170,46 @@ class ArchitectureResponse(BaseModel):
         by_alias = True
 
 
+# Streaming response (without sampleCode)
+class ArchitectureResponsePartial(BaseModel):
+    architecture: Architecture
+    compliance: Compliance
+    deployment: Deployment
+
+    class Config:
+        populate_by_name = True
+        by_alias = True
+
+
+# Code generation request/response
+class CodeGenerationRequest(BaseModel):
+    use_case: UseCase = Field(alias="useCase")
+    cloud_platform: CloudPlatform = Field(alias="cloudPlatform")
+    architecture_summary: str = Field(alias="architectureSummary")
+
+    class Config:
+        populate_by_name = True
+
+
+class CodeGenerationResponse(BaseModel):
+    sample_code: SampleCode = Field(alias="sampleCode")
+
+    class Config:
+        populate_by_name = True
+        by_alias = True
+
+
 # ============= PROMPTS =============
 
 SYSTEM_PROMPT = """You are an expert Healthcare IT Solutions Architect. Generate complete reference architectures with Mermaid diagrams, components, compliance checklists, deployment steps, and sample code in JSON format."""
+
+# Streaming prompt - excludes sampleCode for faster initial response
+SYSTEM_PROMPT_STREAMING = """You are an expert Healthcare IT Solutions Architect. Generate reference architectures with Mermaid diagrams, components, compliance checklists, and deployment steps in JSON format.
+
+IMPORTANT: Do NOT include sampleCode in your response. Code samples will be generated separately on demand."""
+
+# Code generation prompt
+SYSTEM_PROMPT_CODE = """You are an expert Healthcare IT developer. Generate production-quality sample code for integrating with healthcare AI architectures. Include proper error handling, logging, and PHI compliance comments."""
 
 
 # ============= GENERATOR =============
@@ -259,6 +299,167 @@ Return ONLY the JSON, no markdown or explanation."""
             raise ValueError("Incomplete response from AI model")
 
         return ArchitectureResponse.model_validate(data)
+
+    async def generate_stream(self, request: ArchitectureRequest) -> AsyncGenerator[dict, None]:
+        """Stream architecture generation with SSE events (excludes sampleCode)."""
+        user_prompt = f"""Generate a healthcare reference architecture for:
+- Use Case: {request.use_case.value}
+- Cloud Platform: {request.cloud_platform.value}
+- Integration Pattern: {request.integration_pattern.value}
+- Data Classification: {request.data_classification.value}
+- Scale Tier: {request.scale_tier.value}
+
+Return valid JSON with this structure (NO sampleCode - it will be generated separately):
+{{
+  "architecture": {{
+    "mermaidDiagram": "flowchart TD...",
+    "components": [{{"name": "", "service": "", "purpose": "", "phiTouchpoint": true}}],
+    "dataFlows": [{{"from": "", "to": "", "data": "", "encrypted": true}}]
+  }},
+  "compliance": {{
+    "checklist": [{{"category": "technical", "requirement": "", "implementation": "", "priority": "required"}}],
+    "baaRequirements": ""
+  }},
+  "deployment": {{
+    "steps": [],
+    "iamPolicies": [],
+    "networkConfig": "",
+    "monitoringSetup": ""
+  }}
+}}
+
+Return ONLY the JSON, no markdown or explanation."""
+
+        accumulated_text = ""
+        emitted_sections = set()
+
+        try:
+            with self.client.messages.stream(
+                model=self.model,
+                max_tokens=24576,
+                system=[{
+                    "type": "text",
+                    "text": SYSTEM_PROMPT_STREAMING,
+                    "cache_control": {"type": "ephemeral"}
+                }],
+                messages=[{"role": "user", "content": user_prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    accumulated_text += text
+
+                    # Try to extract and emit completed sections
+                    for section_name in ["architecture", "compliance", "deployment"]:
+                        if section_name not in emitted_sections:
+                            section_data = self._try_extract_section(accumulated_text, section_name)
+                            if section_data is not None:
+                                emitted_sections.add(section_name)
+                                yield {
+                                    "event": "section",
+                                    "data": json.dumps({
+                                        "section": section_name,
+                                        "data": section_data
+                                    })
+                                }
+
+            # Emit completion event
+            yield {"event": "done", "data": json.dumps({"status": "complete"})}
+
+        except Exception as e:
+            logger.error(f"Streaming error: {e}")
+            yield {"event": "error", "data": json.dumps({"error": str(e)})}
+
+    def _try_extract_section(self, text: str, section_name: str) -> Optional[dict]:
+        """Try to extract a complete JSON section from accumulated text."""
+        # Look for the section start
+        pattern = rf'"{section_name}"\s*:\s*\{{'
+        match = re.search(pattern, text)
+        if not match:
+            return None
+
+        # Find the matching closing brace by counting braces
+        start_idx = match.end() - 1  # Position of opening brace
+        brace_count = 0
+        in_string = False
+        escape_next = False
+
+        for i, char in enumerate(text[start_idx:], start_idx):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    # Found complete section
+                    section_text = text[start_idx:i + 1]
+                    try:
+                        return json.loads(section_text)
+                    except json.JSONDecodeError:
+                        return None
+
+        return None
+
+    async def generate_code(self, request: CodeGenerationRequest) -> CodeGenerationResponse:
+        """Generate sample code based on architecture context."""
+        user_prompt = f"""Generate production-quality sample code for a healthcare AI integration:
+
+Use Case: {request.use_case.value}
+Cloud Platform: {request.cloud_platform.value}
+Architecture Summary: {request.architecture_summary}
+
+Return JSON with this structure:
+{{
+  "sampleCode": {{
+    "python": "# Production Python code with error handling, logging, PHI compliance...",
+    "typescript": "// Production TypeScript code with types, error handling, PHI compliance..."
+  }}
+}}
+
+Requirements:
+- Include proper error handling and logging
+- Add PHI compliance comments where relevant
+- Use cloud-specific SDK (boto3 for AWS, google-cloud for GCP)
+- Include authentication and rate limiting
+- Follow security best practices
+
+Return ONLY the JSON, no markdown or explanation."""
+
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=16384,
+            system=[{
+                "type": "text",
+                "text": SYSTEM_PROMPT_CODE,
+                "cache_control": {"type": "ephemeral"}
+            }],
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+
+        response_text = message.content[0].text.strip()
+
+        # Clean markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("\n", 1)[1]
+        if response_text.endswith("```"):
+            response_text = response_text.rsplit("```", 1)[0]
+        response_text = response_text.strip()
+
+        try:
+            data = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse code response as JSON: {e}")
+            raise ValueError("Invalid response format from AI model")
+
+        return CodeGenerationResponse.model_validate(data)
 
 
 # ============= APP =============
@@ -389,4 +590,55 @@ async def generate_architecture(request: ArchitectureRequest, http_request: Requ
         raise HTTPException(status_code=500, detail="Failed to generate architecture.")
     except Exception:
         logger.exception("Unexpected error during generation")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+
+@app.post("/api/generate-architecture-stream")
+async def generate_architecture_stream(request: ArchitectureRequest, http_request: Request):
+    """Stream architecture generation using SSE (excludes sampleCode for faster response)."""
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        logger.warning(f"Rate limit exceeded for {client_ip}")
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please wait before making another request."
+        )
+
+    try:
+        generator = get_generator()
+        return EventSourceResponse(
+            generator.generate_stream(request),
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        )
+    except Exception:
+        logger.exception("Streaming initialization error")
+        raise HTTPException(status_code=500, detail="Failed to start streaming.")
+
+
+@app.post("/api/generate-code", response_model=CodeGenerationResponse)
+async def generate_code(request: CodeGenerationRequest, http_request: Request):
+    """Generate sample code based on architecture context."""
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if not rate_limiter.is_allowed(client_ip):
+        logger.warning(f"Rate limit exceeded for {client_ip}")
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please wait before making another request."
+        )
+
+    try:
+        generator = get_generator()
+        response = await generator.generate_code(request)
+        return response
+    except ValueError as e:
+        logger.warning(f"Code generation validation error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid response format from AI model")
+    except anthropic.APIConnectionError:
+        logger.error("API Connection Error")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
+    except anthropic.RateLimitError:
+        logger.warning("Anthropic rate limit exceeded")
+        raise HTTPException(status_code=429, detail="Service busy. Please try again later.")
+    except Exception:
+        logger.exception("Unexpected error during code generation")
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")

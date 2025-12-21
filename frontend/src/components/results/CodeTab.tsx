@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Code } from 'lucide-react';
 import { CopyButton } from '../ui/CopyButton';
 import { cn, downloadFile } from '../../lib/utils';
 import type { SampleCode } from '../../lib/types';
 
 interface CodeTabProps {
-  sampleCode: SampleCode;
+  sampleCode?: SampleCode;
+  onGenerateCode?: () => void;
+  isLoading?: boolean;
 }
 
 type Language = 'python' | 'typescript';
@@ -15,8 +17,43 @@ const LANGUAGES: { id: Language; label: string; extension: string; mimeType: str
   { id: 'typescript', label: 'TypeScript', extension: 'ts', mimeType: 'text/typescript' },
 ];
 
-export function CodeTab({ sampleCode }: CodeTabProps) {
+export function CodeTab({ sampleCode, onGenerateCode, isLoading }: CodeTabProps) {
   const [activeLanguage, setActiveLanguage] = useState<Language>('python');
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-anthropic-600 mb-4"></div>
+        <p className="text-gray-600 font-medium">Generating sample code...</p>
+        <p className="text-gray-500 text-sm mt-1">This typically takes 30-45 seconds</p>
+      </div>
+    );
+  }
+
+  // Show generate button if no code
+  if (!sampleCode) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Code className="w-16 h-16 text-gray-300 mb-4" />
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          Sample Code Available on Demand
+        </h3>
+        <p className="text-gray-600 max-w-md mb-6">
+          Generate production-quality Python and TypeScript integration code tailored to your architecture configuration.
+        </p>
+        {onGenerateCode && (
+          <button
+            onClick={onGenerateCode}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Code className="w-5 h-5" />
+            Generate Sample Code
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const handleDownload = () => {
     const lang = LANGUAGES.find((l) => l.id === activeLanguage)!;
