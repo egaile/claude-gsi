@@ -216,8 +216,12 @@ Return ONLY the JSON, no markdown or explanation."""
 
         message = self.client.messages.create(
             model=self.model,
-            max_tokens=8192,  # Reduced from 16384 to control costs
-            system=SYSTEM_PROMPT,
+            max_tokens=16384,
+            system=[{
+                "type": "text",
+                "text": SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"}
+            }],
             messages=[{"role": "user", "content": user_prompt}],
         )
 
