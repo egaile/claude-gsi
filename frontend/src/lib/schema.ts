@@ -20,7 +20,7 @@ export const ComplianceItemSchema = z.object({
   category: z.enum(['administrative', 'physical', 'technical']),
   requirement: z.string(),
   implementation: z.string(),
-  priority: z.enum(['required', 'recommended']),
+  priority: z.enum(['required', 'recommended', 'addressable']),
 });
 
 export const ArchitectureSchema = z.object({

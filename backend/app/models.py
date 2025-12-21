@@ -84,7 +84,7 @@ class ComplianceItem(BaseModel):
     category: Literal["administrative", "physical", "technical"]
     requirement: str
     implementation: str
-    priority: Literal["required", "recommended"]
+    priority: Literal["required", "recommended", "addressable"]
 
 
 class Architecture(BaseModel):

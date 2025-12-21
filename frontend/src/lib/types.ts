@@ -40,7 +40,7 @@ export interface ComplianceItem {
   category: 'administrative' | 'physical' | 'technical';
   requirement: string;
   implementation: string;
-  priority: 'required' | 'recommended';
+  priority: 'required' | 'recommended' | 'addressable';
 }
 
 export interface Architecture {
