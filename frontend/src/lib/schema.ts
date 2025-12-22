@@ -34,9 +34,19 @@ export const ComplianceSchema = z.object({
   baaRequirements: z.string(),
 });
 
+// IAM policy can be a string (JSON) or an object with name/description/policy
+export const IamPolicySchema = z.union([
+  z.string(),
+  z.object({
+    name: z.string().optional(),
+    description: z.string().optional(),
+    policy: z.string().optional(),
+  }).passthrough(),
+]);
+
 export const DeploymentSchema = z.object({
   steps: z.array(z.string()),
-  iamPolicies: z.array(z.string()),
+  iamPolicies: z.array(IamPolicySchema),
   networkConfig: z.string(),
   monitoringSetup: z.string(),
 });

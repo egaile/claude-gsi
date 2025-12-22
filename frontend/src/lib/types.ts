@@ -54,9 +54,17 @@ export interface Compliance {
   baaRequirements: string;
 }
 
+// IAM policy can be a string (JSON) or a structured object
+export type IamPolicy = string | {
+  name?: string;
+  description?: string;
+  policy?: string;
+  [key: string]: unknown;
+};
+
 export interface Deployment {
   steps: string[];
-  iamPolicies: string[];
+  iamPolicies: IamPolicy[];
   networkConfig: string;
   monitoringSetup: string;
 }
