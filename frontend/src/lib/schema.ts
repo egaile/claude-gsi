@@ -38,7 +38,7 @@ export const ComplianceSchema = z.object({
 // Claude returns various formats, so we accept anything and handle display in the component
 export const IamPolicySchema = z.union([
   z.string(),
-  z.record(z.unknown()),
+  z.record(z.string(), z.unknown()),
 ]);
 
 export const DeploymentSchema = z.object({
