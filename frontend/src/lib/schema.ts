@@ -34,14 +34,11 @@ export const ComplianceSchema = z.object({
   baaRequirements: z.string(),
 });
 
-// IAM policy can be a string (JSON) or an object with name/description/policy
+// IAM policy can be a string (JSON) or any object structure
+// Claude returns various formats, so we accept anything and handle display in the component
 export const IamPolicySchema = z.union([
   z.string(),
-  z.object({
-    name: z.string().optional(),
-    description: z.string().optional(),
-    policy: z.string().optional(),
-  }).passthrough(),
+  z.record(z.unknown()),
 ]);
 
 export const DeploymentSchema = z.object({
