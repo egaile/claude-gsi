@@ -25,6 +25,13 @@ function sanitizeMermaidSyntax(diagram: string): string {
   // Fix escaped newlines that might cause issues
   fixed = fixed.replace(/\\n/g, '<br/>');
 
+  // Remove self-referential links that cause cycles (e.g., "monitoring --> monitoring")
+  // Match patterns like: nodeA --> nodeA, nodeA --- nodeA, nodeA -.-> nodeA
+  fixed = fixed.replace(/^\s*(\w+)\s*[-.<>|]+\s*\1\s*$/gm, '');
+
+  // Also handle links with labels: nodeA -->|label| nodeA
+  fixed = fixed.replace(/^\s*(\w+)\s*[-.<>|]+\|[^|]*\|\s*\1\s*$/gm, '');
+
   return fixed;
 }
 
