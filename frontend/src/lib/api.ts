@@ -118,6 +118,7 @@ export async function healthCheck(): Promise<{ status: string }> {
 export async function generateArchitectureStreaming(
   request: ArchitectureRequest,
   callbacks: {
+    onStarted?: () => void;
     onSection: (section: 'architecture' | 'compliance' | 'deployment', data: Architecture | Compliance | Deployment) => void;
     onError: (error: Error) => void;
     onComplete: () => void;
@@ -167,7 +168,10 @@ export async function generateArchitectureStreaming(
           try {
             const eventData = JSON.parse(line.slice(6));
 
-            if (eventData.section && eventData.data) {
+            if (eventData.status === 'generating') {
+              // Started event - immediately show generating state
+              callbacks.onStarted?.();
+            } else if (eventData.section && eventData.data) {
               // Validate each section with appropriate schema
               let validatedData;
               switch (eventData.section) {

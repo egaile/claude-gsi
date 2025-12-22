@@ -307,6 +307,9 @@ IMPORTANT: Do NOT include sampleCode in your response. Code samples will be gene
         emitted_sections = set()
 
         try:
+            # Send immediate "started" event so UI shows activity
+            yield {"event": "started", "data": json.dumps({"status": "generating"})}
+
             with self.client.messages.stream(
                 model=self.model,
                 max_tokens=24576,

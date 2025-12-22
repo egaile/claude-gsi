@@ -11,6 +11,23 @@ mermaid.initialize({
   fontFamily: 'Inter, system-ui, sans-serif',
 });
 
+// Fix common Mermaid syntax issues from Claude responses
+function sanitizeMermaidSyntax(diagram: string): string {
+  let fixed = diagram;
+
+  // Fix subgraph syntax: subgraph id{label} -> subgraph id["label"]
+  fixed = fixed.replace(/subgraph\s+(\w+)\{([^}]+)\}/g, 'subgraph $1["$2"]');
+
+  // Fix node labels with curly braces: node{label} -> node["label"]
+  // But preserve valid syntax like node[label] and node(label)
+  fixed = fixed.replace(/(\w+)\{([^}]+)\}(?!\s*-->)/g, '$1["$2"]');
+
+  // Fix escaped newlines that might cause issues
+  fixed = fixed.replace(/\\n/g, '<br/>');
+
+  return fixed;
+}
+
 interface MermaidDiagramProps {
   diagram: string;
   className?: string;
@@ -26,9 +43,12 @@ export function MermaidDiagram({ diagram, className }: MermaidDiagramProps) {
       if (!diagram) return;
 
       try {
+        // Sanitize the diagram syntax before rendering
+        const sanitizedDiagram = sanitizeMermaidSyntax(diagram);
+
         // Generate unique ID for this render
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        const { svg: renderedSvg } = await mermaid.render(id, diagram);
+        const { svg: renderedSvg } = await mermaid.render(id, sanitizedDiagram);
         // Sanitize SVG to prevent XSS attacks (defense in depth)
         // Allow foreignObject and related elements needed for Mermaid text labels
         const sanitizedSvg = DOMPurify.sanitize(renderedSvg, {

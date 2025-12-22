@@ -226,7 +226,13 @@ async def generate_architecture_stream(request: Request, arch_request: Architect
             logger.exception("Error during streaming generation")
             yield {"event": "error", "data": '{"error": "Failed to generate architecture"}'}
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
 
 
 @app.post("/api/generate-code", response_model=CodeGenerationResponse)
