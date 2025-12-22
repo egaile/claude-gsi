@@ -9,6 +9,7 @@ mermaid.initialize({
   theme: 'default',
   securityLevel: 'strict', // Prevent XSS attacks through diagram content
   fontFamily: 'Inter, system-ui, sans-serif',
+  suppressErrorRendering: true, // Suppress Mermaid's built-in error display
 });
 
 // Fix common Mermaid syntax issues from Claude responses
