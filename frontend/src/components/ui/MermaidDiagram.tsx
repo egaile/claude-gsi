@@ -25,44 +25,47 @@ function sanitizeMermaidSyntax(diagram: string): string {
   // Fix escaped newlines that might cause issues
   fixed = fixed.replace(/\\n/g, '<br/>');
 
-  // Fix labels containing special characters that break Mermaid parsing
+  // Fix labels containing parentheses that break Mermaid parsing
   // This handles cases like node[Secrets Manager(API Keys)] -> node["Secrets Manager API Keys"]
-  // Match node definitions with brackets or parentheses and fix problematic content
+  // Use [^\[\]]* to avoid matching nested brackets which causes orphan ] issues
   fixed = fixed.replace(
-    /(\w+)\[([^\]]*[()[\]{}][^\]]*)\]/g,
+    /(\w+)\[([^\[\]]*[(){}][^\[\]]*)\]/g,
     (_match, nodeId, label) => {
-      // Remove nested brackets/parens and quote the label
+      // Remove parens/braces and quote the label
       const cleanLabel = label
-        .replace(/[()[\]{}]/g, '') // Remove problematic chars
-        .replace(/\s+/g, ' ')      // Normalize whitespace
+        .replace(/[(){}]/g, '')   // Remove problematic chars (not brackets)
+        .replace(/\s+/g, ' ')     // Normalize whitespace
         .trim();
       return `${nodeId}["${cleanLabel}"]`;
     }
   );
 
-  // Same for rounded nodes with parentheses: node(label with [brackets])
+  // Same for rounded nodes with parentheses: node(label with {braces})
   fixed = fixed.replace(
-    /(\w+)\(([^)]*[[\]{}][^)]*)\)/g,
+    /(\w+)\(([^()]*[{}][^()]*)\)/g,
     (_match, nodeId, label) => {
       const cleanLabel = label
-        .replace(/[[\]{}]/g, '')
+        .replace(/[{}]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
       return `${nodeId}("${cleanLabel}")`;
     }
   );
 
-  // Fix cylinder nodes: node[(label with issues)] -> node[("clean label")]
+  // Fix already-quoted labels containing problematic chars: node["Label(stuff)"] -> node["Label stuff"]
   fixed = fixed.replace(
-    /(\w+)\[\(([^)]*[[\]{}][^)]*)\)\]/g,
+    /(\w+)\["([^"]*[(){}][^"]*)"\]/g,
     (_match, nodeId, label) => {
       const cleanLabel = label
-        .replace(/[[\]{}]/g, '')
+        .replace(/[(){}]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
-      return `${nodeId}[("${cleanLabel}")]`;
+      return `${nodeId}["${cleanLabel}"]`;
     }
   );
+
+  // Clean up any double brackets that might have been created: ]] -> ]
+  fixed = fixed.replace(/"\]\]/g, '"]');
 
   // Remove self-referential links that cause cycles (e.g., "monitoring --> monitoring")
   // Match patterns like: nodeA --> nodeA, nodeA --- nodeA, nodeA -.-> nodeA, nodeA ==> nodeA
