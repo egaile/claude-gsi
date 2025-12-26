@@ -25,6 +25,45 @@ function sanitizeMermaidSyntax(diagram: string): string {
   // Fix escaped newlines that might cause issues
   fixed = fixed.replace(/\\n/g, '<br/>');
 
+  // Fix labels containing special characters that break Mermaid parsing
+  // This handles cases like node[Secrets Manager(API Keys)] -> node["Secrets Manager API Keys"]
+  // Match node definitions with brackets or parentheses and fix problematic content
+  fixed = fixed.replace(
+    /(\w+)\[([^\]]*[()[\]{}][^\]]*)\]/g,
+    (_match, nodeId, label) => {
+      // Remove nested brackets/parens and quote the label
+      const cleanLabel = label
+        .replace(/[()[\]{}]/g, '') // Remove problematic chars
+        .replace(/\s+/g, ' ')      // Normalize whitespace
+        .trim();
+      return `${nodeId}["${cleanLabel}"]`;
+    }
+  );
+
+  // Same for rounded nodes with parentheses: node(label with [brackets])
+  fixed = fixed.replace(
+    /(\w+)\(([^)]*[[\]{}][^)]*)\)/g,
+    (_match, nodeId, label) => {
+      const cleanLabel = label
+        .replace(/[[\]{}]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return `${nodeId}("${cleanLabel}")`;
+    }
+  );
+
+  // Fix cylinder nodes: node[(label with issues)] -> node[("clean label")]
+  fixed = fixed.replace(
+    /(\w+)\[\(([^)]*[[\]{}][^)]*)\)\]/g,
+    (_match, nodeId, label) => {
+      const cleanLabel = label
+        .replace(/[[\]{}]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return `${nodeId}[("${cleanLabel}")]`;
+    }
+  );
+
   // Remove self-referential links that cause cycles (e.g., "monitoring --> monitoring")
   // Match patterns like: nodeA --> nodeA, nodeA --- nodeA, nodeA -.-> nodeA, nodeA ==> nodeA
   // Use more comprehensive arrow pattern: any combination of -, =, ., <, >, |, o, x
