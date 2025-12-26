@@ -5,7 +5,18 @@ Tests for the FastAPI endpoints.
 import json
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
+
+from app.models import (
+    ArchitectureResponse,
+    Architecture,
+    ArchitectureComponent,
+    DataFlow,
+    Compliance,
+    ComplianceItem,
+    Deployment,
+    SampleCode,
+)
 
 # We need to mock before importing the app
 with patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'sk-ant-api03-test-key-for-testing-purposes-only'}):
@@ -50,12 +61,54 @@ class TestGenerateArchitecture:
         )
         assert response.status_code == 422  # Validation error
 
-    def test_generate_architecture_accepts_valid_request(self, client, sample_architecture_response):
+    def test_generate_architecture_accepts_valid_request(self, client):
         """Should accept valid request with all required fields."""
+        # Create a proper ArchitectureResponse object for the mock
+        mock_response = ArchitectureResponse(
+            architecture=Architecture(
+                mermaid_diagram="flowchart TD\n    A[Client] --> B[API Gateway]",
+                components=[
+                    ArchitectureComponent(
+                        name="API Gateway",
+                        service="AWS API Gateway",
+                        purpose="Entry point for requests",
+                        phi_touchpoint=False
+                    )
+                ],
+                data_flows=[
+                    DataFlow(
+                        from_component="Client",
+                        to="API Gateway",
+                        data="Request",
+                        encrypted=True
+                    )
+                ]
+            ),
+            compliance=Compliance(
+                checklist=[
+                    ComplianceItem(
+                        category="technical",
+                        requirement="Encryption at rest",
+                        implementation="Use KMS",
+                        priority="required"
+                    )
+                ],
+                baa_requirements="Sign BAA with AWS"
+            ),
+            deployment=Deployment(
+                steps=["Step 1", "Step 2"],
+                iam_policies=['{"Version": "2012-10-17", "Statement": []}'],
+                network_config="VPC setup",
+                monitoring_setup="CloudWatch"
+            ),
+            sample_code=SampleCode(
+                python="# Python code",
+                typescript="// TypeScript code"
+            )
+        )
+
         with patch('app.main.generator') as mock_gen:
-            mock_gen.generate = AsyncMock(return_value=MagicMock(
-                model_dump=lambda by_alias: sample_architecture_response
-            ))
+            mock_gen.generate = AsyncMock(return_value=mock_response)
 
             response = client.post(
                 "/api/generate-architecture",
