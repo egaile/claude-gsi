@@ -9,7 +9,6 @@ mermaid.initialize({
   theme: 'default',
   securityLevel: 'strict', // Prevent XSS attacks through diagram content
   fontFamily: 'Inter, system-ui, sans-serif',
-  suppressErrorRendering: true, // Suppress Mermaid's built-in error display
 });
 
 // Fix common Mermaid syntax issues from Claude responses
@@ -27,11 +26,56 @@ function sanitizeMermaidSyntax(diagram: string): string {
   fixed = fixed.replace(/\\n/g, '<br/>');
 
   // Remove self-referential links that cause cycles (e.g., "monitoring --> monitoring")
-  // Match patterns like: nodeA --> nodeA, nodeA --- nodeA, nodeA -.-> nodeA
-  fixed = fixed.replace(/^\s*(\w+)\s*[-.<>|]+\s*\1\s*$/gm, '');
+  // Match patterns like: nodeA --> nodeA, nodeA --- nodeA, nodeA -.-> nodeA, nodeA ==> nodeA
+  // Use more comprehensive arrow pattern: any combination of -, =, ., <, >, |, o, x
+  fixed = fixed.replace(/^\s*(\w+)\s*[-=.<>|ox]+\s*\1\s*$/gm, '');
 
-  // Also handle links with labels: nodeA -->|label| nodeA
-  fixed = fixed.replace(/^\s*(\w+)\s*[-.<>|]+\|[^|]*\|\s*\1\s*$/gm, '');
+  // Also handle links with labels: nodeA -->|label| nodeA, nodeA -- label --> nodeA
+  fixed = fixed.replace(/^\s*(\w+)\s*[-=.<>|ox]+\|[^|]*\|\s*\1\s*$/gm, '');
+  fixed = fixed.replace(/^\s*(\w+)\s*--\s+[^-]+\s*-->\s*\1\s*$/gm, '');
+
+  // Handle subgraph self-references: if a subgraph name appears as a node anywhere,
+  // it creates a cycle when that node ends up inside the subgraph.
+  // Solution: rename nodes in edges that match subgraph names.
+
+  // First, collect all subgraph names
+  const subgraphNames = new Set<string>();
+  const subgraphNameRegex = /subgraph\s+(\w+)/g;
+  let match;
+  while ((match = subgraphNameRegex.exec(fixed)) !== null) {
+    subgraphNames.add(match[1]);
+  }
+
+  // For each subgraph name, rename nodes in edges that would create cycles
+  // We rename nodes that appear in edge definitions (lines with arrows)
+  for (const name of subgraphNames) {
+    // Match the node name in edges: "name -->" or "--> name" or "name[label]" in edges
+    // But NOT "subgraph name" definitions
+    const lines = fixed.split('\n');
+    fixed = lines.map(line => {
+      // Skip subgraph definition lines
+      if (/^\s*subgraph\s+/.test(line)) return line;
+      // Skip 'end' lines
+      if (/^\s*end\s*$/.test(line)) return line;
+      // For edge lines (containing arrows), rename the conflicting node
+      if (/[-=][-=]>|<[-=][-=]|[-=]\.[-=]>|\.[-=]>/.test(line)) {
+        // Replace standalone node name with suffixed version
+        // Match word boundary but not when followed by [ ( { " (node labels)
+        const nodeInEdge = new RegExp(`\\b${name}\\b(?=\\s*(?:[-=.<>|]|$|\\[|\\())`, 'g');
+        return line.replace(nodeInEdge, `${name}_svc`);
+      }
+      return line;
+    }).join('\n');
+  }
+
+  // Also remove any remaining self-referential edges
+  for (const name of subgraphNames) {
+    const selfRefPattern = new RegExp(`^\\s*${name}(?:_svc)?\\s*[-=.<>|ox]+\\s*${name}(?:_svc)?\\s*$`, 'gm');
+    fixed = fixed.replace(selfRefPattern, '');
+  }
+
+  // Remove empty lines that might have been created
+  fixed = fixed.replace(/^\s*[\r\n]+/gm, '\n');
 
   return fixed;
 }
