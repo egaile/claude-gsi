@@ -225,7 +225,7 @@ export async function generateCode(
       },
       body: JSON.stringify(request),
     },
-    60000 // 1 minute timeout for code generation
+    180000 // 3 minute timeout for code generation (Claude API can take 2+ minutes)
   );
 
   if (!response.ok) {

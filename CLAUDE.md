@@ -93,7 +93,7 @@ Full generation including sample code. Response time: ~90 seconds.
 SSE streaming endpoint. Returns sections progressively (architecture → compliance → deployment). Excludes sample code for faster response (~45-50 seconds).
 
 ### `POST /api/generate-code`
-On-demand code generation. Takes use case, cloud platform, and architecture summary. Returns Python and TypeScript samples (~30-40 seconds).
+On-demand code generation. Takes use case, cloud platform, and architecture summary. Returns Python and TypeScript samples (~60-120 seconds, can take up to 2+ minutes under load).
 
 Request selects: use case, cloud platform, integration pattern, data classification, scale tier.
 
