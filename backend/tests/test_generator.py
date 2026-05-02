@@ -171,6 +171,50 @@ class TestArchitectureGenerator:
             assert response.architecture is not None
             openai_client.chat.completions.create.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_generate_stream_caches_parallel_sections(
+        self, mock_anthropic_client, sample_request
+    ):
+        """Streaming should cache completed sections for repeated configurations."""
+        from app.services.generator import ArchitectureGenerator
+
+        generator = ArchitectureGenerator("sk-ant-api03-test-key")
+        section_data = {
+            "architecture": {
+                "mermaidDiagram": "flowchart TD\nA --> B",
+                "components": [],
+                "dataFlows": [],
+            },
+            "compliance": {
+                "checklist": [],
+                "baaRequirements": "BAA required",
+            },
+            "deployment": {
+                "steps": [],
+                "iamPolicies": [],
+                "networkConfig": "VPC",
+                "monitoringSetup": "Logs",
+            },
+        }
+
+        with patch.object(
+            generator,
+            "_generate_section_sync",
+            side_effect=lambda _request, section_name: section_data[section_name],
+        ) as mock_generate_section:
+            first_events = [event async for event in generator.generate_stream(sample_request)]
+            second_events = [event async for event in generator.generate_stream(sample_request)]
+
+        assert mock_generate_section.call_count == 3
+        assert sum(event.get("event") == "section" for event in first_events) == 3
+        assert sum(event.get("event") == "section" for event in second_events) == 3
+        cached_payloads = [
+            json.loads(event["data"])
+            for event in second_events
+            if event.get("event") == "section"
+        ]
+        assert all(payload.get("cached") is True for payload in cached_payloads)
+
 
 class TestResponseSizeLimit:
     """Tests for response size validation."""

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import asyncio
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MAX_RESPONSE_SIZE = 500_000  # 500KB limit for model responses
+STREAMING_SECTIONS = ("architecture", "compliance", "deployment")
 
 
 class ArchitectureGenerator:
@@ -61,6 +63,7 @@ class ArchitectureGenerator:
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-5.2")
         self.prompts_dir = Path(__file__).parent.parent.parent / "prompts"
         self.templates_dir = Path(__file__).parent.parent.parent / "templates"
+        self._stream_cache: dict[str, dict[str, dict]] = {}
         
         # Load prompts
         self.system_prompt = self._load_prompt("system_prompt.txt")
@@ -193,6 +196,23 @@ class ArchitectureGenerator:
 - In diagrams and code, label the LLM component as OpenAI ChatGPT or OpenAI API.
 - Do not use Claude-specific request formats, model IDs, SDK imports, or service names in generated sample code.
 """
+
+    def _request_cache_key(self, request: ArchitectureRequest, suffix: str) -> str:
+        """Create a stable cache key for a request."""
+        request_data = request.model_dump(mode="json", by_alias=True)
+        return f"{suffix}:{json.dumps(request_data, sort_keys=True)}"
+
+    @staticmethod
+    def _strip_markdown_fences(response_text: str) -> str:
+        """Clean optional markdown fences from model JSON output."""
+        response_text = response_text.strip()
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        elif response_text.startswith("```"):
+            response_text = response_text.split("\n", 1)[1]
+        if response_text.endswith("```"):
+            response_text = response_text.rsplit("```", 1)[0]
+        return response_text.strip()
 
         return f"""
 ## AI Provider Context: Claude
@@ -368,14 +388,7 @@ Generate the JSON response now:"""
             raise ValueError("Response too large")
 
         # Clean up the response if needed
-        response_text = response_text.strip()
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        if response_text.startswith("```"):
-            response_text = response_text[3:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
+        response_text = self._strip_markdown_fences(response_text)
 
         # Parse JSON response
         try:
@@ -394,13 +407,50 @@ Generate the JSON response now:"""
         # Validate and return
         return ArchitectureResponse.model_validate(data)
 
-    def _build_streaming_prompt(self, request: ArchitectureRequest) -> str:
-        """Build the user prompt for streaming (excludes sampleCode)."""
+    def _build_section_prompt(self, request: ArchitectureRequest, section_name: str) -> str:
+        """Build a prompt for one streamable response section."""
         use_case_context = self._get_use_case_context(request.use_case)
         cloud_context = self._get_cloud_context(request.cloud_platform)
         ai_provider_context = self._get_ai_provider_context(request.ai_provider)
+        section_formats = {
+            "architecture": """
+{
+  "mermaidDiagram": "flowchart TD...",
+  "components": [{"name": "", "service": "", "purpose": "", "phiTouchpoint": true}],
+  "dataFlows": [{"from": "", "to": "", "data": "", "encrypted": true}]
+}
+""",
+            "compliance": """
+{
+  "checklist": [{"category": "technical", "requirement": "", "implementation": "", "priority": "required"}],
+  "baaRequirements": ""
+}
+""",
+            "deployment": """
+{
+  "steps": [],
+  "iamPolicies": [],
+  "networkConfig": "",
+  "monitoringSetup": ""
+}
+""",
+        }
 
-        return f"""Generate a healthcare reference architecture for:
+        section_guidance = {
+            "architecture": "Generate the architecture section only. Keep Mermaid node labels short and move detail into components and dataFlows.",
+            "compliance": "Generate the compliance section only. Focus on HIPAA, PHI handling, BAA, audit, and human review controls.",
+            "deployment": "Generate the deployment section only. Include concrete cloud steps, IAM policies, network config, and monitoring setup.",
+        }
+
+        return f"""Generate one JSON section for a healthcare reference architecture.
+
+## Section
+{section_name}
+
+## Section Task
+{section_guidance[section_name]}
+
+## Configuration
 - Use Case: {request.use_case.value}
 - Deployment Cloud: {request.cloud_platform.value}
 - AI Provider: {request.ai_provider.value}
@@ -418,62 +468,102 @@ Generate the JSON response now:"""
 
 {ai_provider_context}
 
-Return valid JSON with this structure (NO sampleCode - it will be generated separately):
-{{
-  "architecture": {{
-    "mermaidDiagram": "flowchart TD...",
-    "components": [{{"name": "", "service": "", "purpose": "", "phiTouchpoint": true}}],
-    "dataFlows": [{{"from": "", "to": "", "data": "", "encrypted": true}}]
-  }},
-  "compliance": {{
-    "checklist": [{{"category": "technical", "requirement": "", "implementation": "", "priority": "required"}}],
-    "baaRequirements": ""
-  }},
-  "deployment": {{
-    "steps": [],
-    "iamPolicies": [],
-    "networkConfig": "",
-    "monitoringSetup": ""
-  }}
-}}
+## Required JSON Shape
+{section_formats[section_name]}
 
-Return ONLY the JSON, no markdown or explanation. Use the selected AI provider consistently."""
+Return ONLY this section's JSON object, no parent key, no markdown, no explanation.
+The response must be valid JSON. Use the selected AI provider consistently."""
+
+    def _build_streaming_prompt(self, request: ArchitectureRequest) -> str:
+        """Build the legacy full streaming prompt (excludes sampleCode)."""
+        section_shapes = {
+            "architecture": self._build_section_prompt(request, "architecture"),
+            "compliance": self._build_section_prompt(request, "compliance"),
+            "deployment": self._build_section_prompt(request, "deployment"),
+        }
+        return "\n\n".join(section_shapes.values())
+
+    def _generate_section_sync(self, request: ArchitectureRequest, section_name: str) -> dict:
+        """Generate one response section synchronously for thread execution."""
+        system_prompt_section = """You are an expert Healthcare IT Solutions Architect. Generate one valid JSON section for a healthcare AI reference architecture. Keep the section concise, schema-compliant, and production-oriented."""
+        user_prompt = self._build_section_prompt(request, section_name)
+        response_text, finish_reason = self._create_completion(
+            request.ai_provider,
+            system_prompt_section,
+            user_prompt,
+            8192,
+        )
+
+        if finish_reason in {"max_tokens", "length"}:
+            raise ValueError(f"{section_name} section exceeded maximum length")
+
+        if len(response_text) > MAX_RESPONSE_SIZE:
+            raise ValueError(f"{section_name} section response too large")
+
+        response_text = self._strip_markdown_fences(response_text)
+
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse %s section response as JSON: %s", section_name, e)
+            raise ValueError("Invalid response format from AI model") from e
 
     async def generate_stream(self, request: ArchitectureRequest) -> AsyncGenerator[dict, None]:
-        """Stream architecture generation with SSE events (excludes sampleCode)."""
-        system_prompt_streaming = """You are an expert Healthcare IT Solutions Architect. Generate reference architectures with Mermaid diagrams, components, compliance checklists, and deployment steps in JSON format.
-
-IMPORTANT: Do NOT include sampleCode in your response. Code samples will be generated separately on demand."""
-
-        user_prompt = self._build_streaming_prompt(request)
-        accumulated_text = ""
-        emitted_sections = set()
+        """Stream architecture generation with parallel section calls and SSE events."""
+        cache_key = self._request_cache_key(request, "stream-sections-v2")
 
         try:
             # Send immediate "started" event so UI shows activity
-            yield {"event": "started", "data": json.dumps({"status": "generating"})}
+            yield {
+                "event": "started",
+                "data": json.dumps({"status": "generating", "mode": "parallel-sections"}),
+            }
 
-            for text in self._stream_completion(
-                request.ai_provider,
-                system_prompt_streaming,
-                user_prompt,
-                24576,
-            ):
-                accumulated_text += text
+            cached_sections = self._stream_cache.get(cache_key)
+            if cached_sections:
+                logger.info("Using cached architecture sections")
+                for section_name in STREAMING_SECTIONS:
+                    yield {
+                        "event": "section",
+                        "data": json.dumps({
+                            "section": section_name,
+                            "data": cached_sections[section_name],
+                            "cached": True,
+                        }),
+                    }
+                yield {"event": "done", "data": json.dumps({"status": "complete", "cached": True})}
+                return
 
-                # Try to extract and emit completed sections
-                for section_name in ["architecture", "compliance", "deployment"]:
-                    if section_name not in emitted_sections:
-                        section_data = self._try_extract_section(accumulated_text, section_name)
-                        if section_data is not None:
-                            emitted_sections.add(section_name)
-                            yield {
-                                "event": "section",
-                                "data": json.dumps({
-                                    "section": section_name,
-                                    "data": section_data
-                                })
-                            }
+            async def generate_section(section_name: str) -> tuple[str, dict]:
+                section_data = await asyncio.to_thread(
+                    self._generate_section_sync,
+                    request,
+                    section_name,
+                )
+                return section_name, section_data
+
+            tasks = [
+                asyncio.create_task(generate_section(section_name))
+                for section_name in STREAMING_SECTIONS
+            ]
+            generated_sections: dict[str, dict] = {}
+
+            for task in asyncio.as_completed(tasks):
+                section_name, section_data = await task
+                generated_sections[section_name] = section_data
+                yield {
+                    "event": "section",
+                    "data": json.dumps({
+                        "section": section_name,
+                        "data": section_data,
+                    }),
+                }
+
+            if all(section_name in generated_sections for section_name in STREAMING_SECTIONS):
+                self._stream_cache[cache_key] = {
+                    section_name: generated_sections[section_name]
+                    for section_name in STREAMING_SECTIONS
+                }
 
             # Emit completion event
             yield {"event": "done", "data": json.dumps({"status": "complete"})}

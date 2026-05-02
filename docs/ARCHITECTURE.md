@@ -117,9 +117,9 @@ sequenceDiagram
     FE->>API: POST /api/generate-architecture-stream
     API->>API: Validate request with Pydantic
     API->>GEN: generate_stream(request)
-    GEN->>GEN: Build healthcare + cloud + provider prompt
-    GEN->>AI: Stream model response
-    AI-->>GEN: JSON text chunks
+    GEN->>GEN: Check in-memory cache
+    GEN->>AI: Generate architecture, compliance, and deployment in parallel
+    AI-->>GEN: Section JSON
     GEN-->>API: section events
     API-->>FE: SSE events
 ```
@@ -136,6 +136,16 @@ The generator composes prompts from:
 - **Example Output**: Provider-neutral JSON example used as a schema guide
 
 The model is instructed to use the selected AI provider consistently in diagrams, component names, compliance guidance, deployment steps, and sample code.
+
+### Streaming Performance
+
+The streaming endpoint uses parallel section generation instead of one large model response. The backend launches independent model calls for:
+
+- `architecture`
+- `compliance`
+- `deployment`
+
+Each completed section is emitted as an SSE `section` event. Completed section sets are cached in memory using the full request configuration, so repeated demo runs for the same use case/cloud/provider/pattern/classification/scale return almost immediately. The cache is process-local and resets on service restart.
 
 ### Provider Routing
 
@@ -171,7 +181,8 @@ Generated architectures should always include:
 
 ## Operational Notes
 
-- Streaming generation is preferred for the UI because it progressively loads architecture, compliance, and deployment sections.
+- Streaming generation is preferred for the UI because it generates architecture, compliance, and deployment sections in parallel and progressively loads each completed section.
 - Sample code is generated on demand to reduce initial latency.
+- Repeated configurations are served from an in-memory backend cache.
 - Responses are parsed as JSON and validated through Pydantic/Zod.
 - The app keeps provider choice explicit so partner demos can compare architectures without rewriting deployment-cloud assumptions.

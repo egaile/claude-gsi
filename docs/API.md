@@ -172,7 +172,7 @@ POST /api/generate-architecture
 
 ### Generate Architecture (Streaming)
 
-Stream architecture generation with Server-Sent Events (SSE). Returns sections progressively as they complete. Does NOT include sample code (use the separate code generation endpoint).
+Stream architecture generation with Server-Sent Events (SSE). The backend generates architecture, compliance, and deployment sections in parallel, returns each section as it completes, and caches completed results for repeated configurations. This endpoint does NOT include sample code (use the separate code generation endpoint).
 
 ```
 POST /api/generate-architecture-stream
@@ -210,8 +210,8 @@ data: {"status": "complete"}
 
 | Event | Description |
 |-------|-------------|
-| `section` | A completed section (architecture, compliance, or deployment) |
-| `done` | Stream complete |
+| `section` | A completed section (architecture, compliance, or deployment). Cached responses include `"cached": true`. |
+| `done` | Stream complete. Cached responses include `"cached": true`. |
 | `error` | An error occurred |
 
 **Status Codes**

@@ -59,6 +59,8 @@ The product is intentionally AI agnostic: users select a deployment cloud and se
 ### Key Technical Decisions
 
 - **Provider-Agnostic Generation**: The backend routes generation to Claude or OpenAI ChatGPT based on the request
+- **Parallel Section Streaming**: Architecture, compliance, and deployment sections generate independently and stream as they complete
+- **In-Memory Response Cache**: Repeated demo configurations return quickly from a process-local cache
 - **Mermaid.js for Diagrams**: Code-based diagrams that render consistently and export cleanly
 - **FastAPI Backend**: Clean async handling for AI provider API calls with proper error handling
 - **TypeScript Frontend**: Strong typing prevents runtime errors and improves maintainability

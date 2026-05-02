@@ -119,6 +119,10 @@ pytest                           # Run tests
 pytest -x                        # Stop on first failure
 ```
 
+### Streaming Performance
+
+`ArchitectureGenerator.generate_stream()` generates the `architecture`, `compliance`, and `deployment` sections in parallel and emits each section as soon as it completes. It also keeps a process-local in-memory cache keyed by the complete request configuration, which makes repeated demo runs for the same configuration return quickly. The cache resets whenever the backend process restarts.
+
 ---
 
 ## Code Style

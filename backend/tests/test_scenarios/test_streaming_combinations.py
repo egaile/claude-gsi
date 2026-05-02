@@ -19,7 +19,6 @@ from tests.fixtures.mock_responses import generate_mock_streaming_response
 from tests.test_scenarios.conftest import (
     ALL_COMBINATIONS,
     REPRESENTATIVE_COMBINATIONS,
-    MockStreamContext,
     combination_id,
 )
 
@@ -98,18 +97,24 @@ class TestStreamingWithMockedAPI:
     )
     @pytest.mark.asyncio
     async def test_streaming_generator_accepts_combination(
-        self, combination, mock_anthropic_client, mock_stream_context_factory
+        self, combination, mock_anthropic_client
     ):
         """
         Validate streaming generation for representative combinations.
         """
         use_case, platform, pattern, classification, scale = combination
 
-        # Configure mock for streaming
-        mock_stream = mock_stream_context_factory(
+        # Configure mocks for parallel section generation
+        mock_response_data = generate_mock_streaming_response(
             use_case, platform, pattern, classification, scale
         )
-        mock_anthropic_client.messages.stream.return_value = mock_stream
+        mock_messages = []
+        for section_name in ("architecture", "compliance", "deployment"):
+            mock_message = MagicMock()
+            mock_message.stop_reason = "end_turn"
+            mock_message.content = [MagicMock(text=json.dumps(mock_response_data[section_name]))]
+            mock_messages.append(mock_message)
+        mock_anthropic_client.messages.create.side_effect = mock_messages
 
         from app.services.generator import ArchitectureGenerator
 
@@ -133,8 +138,9 @@ class TestStreamingWithMockedAPI:
 
         # Should have progress events
         event_types = [e.get("event") for e in events if "event" in e]
-        # At minimum, should have some events emitted
-        assert len(event_types) >= 0 or len(events) > 0
+        assert "started" in event_types
+        assert event_types.count("section") == 3
+        assert "done" in event_types
 
 
 class TestMermaidDiagramValidation:

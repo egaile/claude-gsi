@@ -63,6 +63,8 @@ GSI teams repeatedly need to design secure, compliant AI architectures for healt
 6. The streaming endpoint progressively returns architecture, compliance, and deployment sections.
 7. Sample code is generated on demand and includes provider-specific SDK/API usage.
 8. The API returns a clear configuration error when the selected provider key is not configured.
+9. The streaming endpoint generates major sections in parallel to improve first-result latency.
+10. The backend caches generated section sets for repeated configurations.
 
 ## Technical Requirements
 
@@ -89,3 +91,4 @@ GSI teams repeatedly need to design secure, compliant AI architectures for healt
 - Generated output validates against the response schema.
 - Users can switch providers without changing deployment-cloud selections.
 - Documentation and UI describe the product as an enterprise AI architecture tool, not as a single-vendor demo.
+- Repeated demo configurations return from cache with minimal latency.
