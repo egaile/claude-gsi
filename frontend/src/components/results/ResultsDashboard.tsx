@@ -192,6 +192,7 @@ function generateMarkdown(response: PartialResponse, request: ArchitectureReques
 > **Configuration**:
 > - Use Case: ${request.useCase}
 > - Cloud Platform: ${request.cloudPlatform}
+> - AI Provider: ${request.aiProvider}
 > - Integration Pattern: ${request.integrationPattern}
 > - Data Classification: ${request.dataClassification}
 > - Scale Tier: ${request.scaleTier}

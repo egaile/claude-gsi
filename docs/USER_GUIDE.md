@@ -2,7 +2,7 @@
 
 ## GSI Reference Architecture Generator
 
-This guide explains how to use the GSI Reference Architecture Generator to create healthcare-specific Claude deployment architectures.
+This guide explains how to use the GSI Reference Architecture Generator to create healthcare-specific enterprise AI deployment architectures.
 
 ---
 
@@ -48,12 +48,23 @@ Choose your deployment target:
 
 | Platform | Description | Key Services |
 |----------|-------------|--------------|
-| **AWS Bedrock** | Amazon's managed AI service with Claude models | API Gateway, Lambda, HealthLake, Comprehend Medical |
-| **GCP Vertex AI** | Google Cloud's AI platform with Claude | Cloud Run, Healthcare API, Pub/Sub |
+| **AWS** | AWS healthcare and secure AI workload patterns | API Gateway, Lambda, HealthLake, Comprehend Medical |
+| **Google Cloud** | Google Cloud healthcare and secure AI workload patterns | Cloud Run, Healthcare API, Pub/Sub |
+
+### AI Provider
+
+Select the LLM provider for the implementation:
+
+| Provider | Best Fit |
+|----------|----------|
+| **Claude** | Enterprise workflows standardized on Anthropic models |
+| **OpenAI ChatGPT** | Enterprise workflows standardized on OpenAI models |
+
+The selected provider is reflected in diagrams, BAA guidance, deployment steps, and generated code.
 
 ### Integration Pattern
 
-Select how your application will interact with Claude:
+Select how your application will interact with the AI provider:
 
 | Pattern | Best For | Characteristics |
 |---------|----------|-----------------|
@@ -96,7 +107,7 @@ After generation, you'll see a tabbed dashboard with four sections:
 
 ### Compliance Tab
 
-- **BAA Requirements**: Business Associate Agreement guidance for Anthropic and cloud services
+- **BAA Requirements**: Business Associate Agreement guidance for the selected AI provider and cloud services
 - **Administrative Safeguards**: Workforce training, access management, incident response
 - **Physical Safeguards**: Facility access, workstation security, device controls
 - **Technical Safeguards**: Encryption, audit controls, access controls
@@ -117,8 +128,8 @@ Each item shows:
 
 Sample integration code in two languages:
 
-- **Python**: Using the Anthropic SDK
-- **TypeScript**: Using the Anthropic SDK
+- **Python**: Provider-specific Python integration
+- **TypeScript**: Provider-specific TypeScript integration
 
 Both samples include:
 - Secure API key handling
@@ -161,7 +172,7 @@ Protected Health Information (PHI) includes any individually identifiable health
 
 ### Why are there two cloud platform options?
 
-Different healthcare organizations have existing cloud relationships and compliance certifications. AWS Bedrock and GCP Vertex AI both offer HIPAA-eligible services, but with different integration patterns and service catalogs.
+Different healthcare organizations have existing cloud relationships and compliance certifications. AWS and Google Cloud both offer HIPAA-eligible services, but with different integration patterns and service catalogs. The AI provider selection is separate from the deployment cloud selection.
 
 ### Are the generated architectures production-ready?
 

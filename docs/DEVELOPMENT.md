@@ -10,7 +10,7 @@ This guide covers local development setup, project structure, and how to extend 
 
 - **Node.js** 18+ (for frontend)
 - **Python** 3.9+ (for backend)
-- **Anthropic API Key** from [console.anthropic.com](https://console.anthropic.com)
+- At least one AI provider API key: Anthropic and/or OpenAI
 
 ---
 
@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 # Create environment file
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Edit .env and add ANTHROPIC_API_KEY and/or OPENAI_API_KEY
 
 # Start development server
 uvicorn app.main:app --reload --port 8000
@@ -87,12 +87,12 @@ gsi-reference-architecture/
 │   │   ├── main.py             # FastAPI app, endpoints
 │   │   ├── models.py           # Pydantic models
 │   │   └── services/
-│   │       └── generator.py    # Claude integration
-│   ├── prompts/                # Context files for Claude
+│   │       └── generator.py    # AI provider routing and prompt assembly
+│   ├── prompts/                # Provider-neutral context files
 │   ├── templates/              # Example output
 │   └── requirements.txt
 ├── docs/                       # Documentation
-├── CLAUDE.md                   # Claude Code guidance
+├── CLAUDE.md                   # Development guidance
 └── README.md                   # Project overview
 ```
 
@@ -150,7 +150,7 @@ export default function MyComponent({ title }: any) { ... }
 ```python
 # Good
 async def generate(self, request: ArchitectureRequest) -> ArchitectureResponse:
-    """Generate architecture using Claude."""
+    """Generate architecture using the selected AI provider."""
     ...
 
 # Avoid
@@ -235,13 +235,13 @@ To add a new cloud platform (e.g., Azure):
 
 ### 1. Create Context File
 
-Create `backend/prompts/azure_openai_context.txt`:
+Create `backend/prompts/azure_context.txt`:
 
 ```text
 ## Azure Cloud Platform Context
 
 ### Core AI Services
-- Azure OpenAI Service: Claude models via Azure
+- Azure AI services and approved enterprise LLM endpoints
 - Azure Health Data Services: FHIR server
 - Azure Cognitive Services: Healthcare NLP
 
@@ -257,7 +257,7 @@ Edit `backend/app/models.py`:
 class CloudPlatform(str, Enum):
     AWS_BEDROCK = "aws-bedrock"
     GCP_VERTEX = "gcp-vertex"
-    AZURE_OPENAI = "azure-openai"  # Add new platform
+    AZURE = "azure"  # Add new platform
 ```
 
 ### 3. Update Generator
@@ -265,14 +265,14 @@ class CloudPlatform(str, Enum):
 Edit `backend/app/services/generator.py`:
 
 ```python
-def __init__(self, api_key: str):
+def __init__(self, anthropic_api_key: str | None = None, openai_api_key: str | None = None):
     # ... existing code
-    self.azure_context = self._load_prompt("azure_openai_context.txt")
+    self.azure_context = self._load_prompt("azure_context.txt")
 
 def _get_cloud_context(self, platform: CloudPlatform) -> str:
     if platform == CloudPlatform.AWS_BEDROCK:
         return self.aws_context
-    elif platform == CloudPlatform.AZURE_OPENAI:
+    elif platform == CloudPlatform.AZURE:
         return self.azure_context
     return self.gcp_context
 ```
@@ -282,13 +282,13 @@ def _get_cloud_context(self, platform: CloudPlatform) -> str:
 Edit `frontend/src/lib/types.ts`:
 
 ```typescript
-export type CloudPlatform = 'aws-bedrock' | 'gcp-vertex' | 'azure-openai';
+export type CloudPlatform = 'aws-bedrock' | 'gcp-vertex' | 'azure';
 
 export const CLOUD_PLATFORM_OPTIONS: Record<CloudPlatform, { label: string; description: string }> = {
   // ... existing options
-  'azure-openai': {
-    label: 'Azure OpenAI',
-    description: 'Microsoft Azure with Claude models',
+  'azure': {
+    label: 'Azure',
+    description: 'Microsoft Azure healthcare and secure AI workload patterns',
   },
 };
 ```
@@ -301,7 +301,7 @@ The quality of generated architectures depends heavily on the prompts. Key files
 
 ### System Prompt (`prompts/system_prompt.txt`)
 
-Establishes Claude's persona and expertise:
+Establishes the AI model's architecture persona and expertise:
 - Healthcare IT architecture
 - HIPAA compliance
 - Cloud deployment patterns
@@ -398,7 +398,7 @@ Use browser DevTools:
 
 ### Common Issues
 
-**Claude returns incomplete JSON**:
+**AI provider returns incomplete JSON**:
 - Increase `max_tokens` in `generator.py`
 - Simplify the prompt to reduce response size
 
@@ -427,6 +427,7 @@ Use browser DevTools:
 - [FastAPI Documentation](https://fastapi.tiangolo.com)
 - [React Documentation](https://react.dev)
 - [Anthropic API Documentation](https://docs.anthropic.com)
+- [OpenAI API Documentation](https://platform.openai.com/docs)
 - [Mermaid Documentation](https://mermaid.js.org)
 - [TailwindCSS Documentation](https://tailwindcss.com)
 - [HIPAA Security Rule](https://www.hhs.gov/hipaa/for-professionals/security)

@@ -35,7 +35,7 @@ export const ComplianceSchema = z.object({
 });
 
 // IAM policy can be a string (JSON) or any object structure
-// Claude returns various formats, so we accept anything and handle display in the component
+// AI providers return various formats, so we accept anything and handle display in the component
 export const IamPolicySchema = z.union([
   z.string(),
   z.record(z.string(), z.unknown()),

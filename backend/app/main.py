@@ -1,7 +1,7 @@
 """
 Reference Architecture Generator - FastAPI Application
 
-This API generates healthcare-specific Claude deployment architectures.
+This API generates healthcare-specific AI deployment architectures.
 """
 
 import logging
@@ -26,7 +26,7 @@ from app.models import (
     CodeGenerationRequest,
     CodeGenerationResponse,
 )
-from app.services.generator import ArchitectureGenerator
+from app.services.generator import ArchitectureGenerator, openai
 
 # Configure logging with structured format for audit trail
 logging.basicConfig(
@@ -45,14 +45,42 @@ limiter = Limiter(key_func=get_remote_address)
 generator: Optional[ArchitectureGenerator] = None
 
 
-def validate_api_key(api_key: str) -> None:
+OPENAI_CONNECTION_ERRORS = tuple(
+    error_class
+    for error_class in [getattr(openai, "APIConnectionError", None)]
+    if error_class is not None
+)
+OPENAI_AUTH_ERRORS = tuple(
+    error_class
+    for error_class in [getattr(openai, "AuthenticationError", None)]
+    if error_class is not None
+)
+OPENAI_RATE_LIMIT_ERRORS = tuple(
+    error_class
+    for error_class in [getattr(openai, "RateLimitError", None)]
+    if error_class is not None
+)
+OPENAI_STATUS_ERRORS = tuple(
+    error_class
+    for error_class in [getattr(openai, "APIStatusError", None)]
+    if error_class is not None
+)
+
+
+def validate_anthropic_api_key(api_key: str) -> None:
     """Validate the Anthropic API key format."""
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY environment variable is required")
     if not api_key.startswith("sk-ant-"):
         raise RuntimeError("ANTHROPIC_API_KEY appears invalid (must start with 'sk-ant-')")
     if len(api_key) < 50:
         raise RuntimeError("ANTHROPIC_API_KEY appears invalid (too short)")
+
+
+def validate_openai_api_key(api_key: str) -> None:
+    """Validate the OpenAI API key format."""
+    if not api_key.startswith("sk-"):
+        raise RuntimeError("OPENAI_API_KEY appears invalid (must start with 'sk-')")
+    if len(api_key) < 40:
+        raise RuntimeError("OPENAI_API_KEY appears invalid (too short)")
 
 
 @asynccontextmanager
@@ -60,11 +88,21 @@ async def lifespan(app: FastAPI):
     """Initialize and cleanup application resources."""
     global generator
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    validate_api_key(api_key)
-    logger.info("API key validated successfully")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
 
-    generator = ArchitectureGenerator(api_key)
+    if not anthropic_api_key and not openai_api_key:
+        raise RuntimeError("At least one AI provider API key is required")
+
+    if anthropic_api_key:
+        validate_anthropic_api_key(anthropic_api_key)
+        logger.info("Anthropic API key validated successfully")
+
+    if openai_api_key:
+        validate_openai_api_key(openai_api_key)
+        logger.info("OpenAI API key validated successfully")
+
+    generator = ArchitectureGenerator(anthropic_api_key, openai_api_key)
     logger.info("Architecture generator initialized")
     yield
     # Cleanup if needed
@@ -75,7 +113,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Reference Architecture Generator",
-    description="Generate healthcare-specific Claude deployment architectures",
+    description="Generate healthcare-specific AI deployment architectures",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -148,7 +186,7 @@ async def generate_architecture(request: Request, arch_request: ArchitectureRequ
     """
     Generate a reference architecture based on the provided configuration.
 
-    This endpoint uses Claude to generate:
+    This endpoint uses the selected AI provider to generate:
     - Architecture diagram (Mermaid format)
     - Component details with PHI touchpoints
     - HIPAA compliance checklist
@@ -162,7 +200,12 @@ async def generate_architecture(request: Request, arch_request: ArchitectureRequ
         raise HTTPException(status_code=503, detail="Service not initialized")
 
     try:
-        logger.info(f"Generating architecture for use_case={arch_request.use_case}, platform={arch_request.cloud_platform}")
+        logger.info(
+            "Generating architecture for use_case=%s, platform=%s, provider=%s",
+            arch_request.use_case,
+            arch_request.cloud_platform,
+            arch_request.ai_provider,
+        )
         response = await generator.generate(arch_request)
         logger.info("Architecture generation completed successfully")
         return response
@@ -174,10 +217,16 @@ async def generate_architecture(request: Request, arch_request: ArchitectureRequ
             "Response too large",
             "Invalid response format from AI model",
             "Incomplete response from AI model",
+            "Selected AI provider is not configured",
+            "OpenAI SDK is not installed",
         ]
         if not any(msg in error_msg for msg in safe_messages):
             error_msg = "Invalid request parameters"
         logger.warning(f"Validation error: {e}")
+        if "Selected AI provider is not configured" in error_msg:
+            raise HTTPException(status_code=503, detail=error_msg)
+        if "OpenAI SDK is not installed" in error_msg:
+            raise HTTPException(status_code=500, detail="Service configuration error.")
         raise HTTPException(status_code=400, detail=error_msg)
     except anthropic.APIConnectionError:
         logger.error("API Connection Error")
@@ -190,6 +239,18 @@ async def generate_architecture(request: Request, arch_request: ArchitectureRequ
         raise HTTPException(status_code=429, detail="Service busy. Please try again later.")
     except anthropic.APIStatusError as e:
         logger.error(f"API Status Error: {e.status_code}")
+        raise HTTPException(status_code=500, detail="Failed to generate architecture.")
+    except OPENAI_CONNECTION_ERRORS:
+        logger.error("OpenAI API Connection Error")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
+    except OPENAI_AUTH_ERRORS:
+        logger.error("OpenAI Authentication Error - check API key configuration")
+        raise HTTPException(status_code=500, detail="Service configuration error.")
+    except OPENAI_RATE_LIMIT_ERRORS:
+        logger.warning("OpenAI rate limit exceeded")
+        raise HTTPException(status_code=429, detail="Service busy. Please try again later.")
+    except OPENAI_STATUS_ERRORS as e:
+        logger.error(f"OpenAI API Status Error: {e.status_code}")
         raise HTTPException(status_code=500, detail="Failed to generate architecture.")
     except Exception:
         logger.exception("Unexpected error during generation")
@@ -216,7 +277,12 @@ async def generate_architecture_stream(request: Request, arch_request: Architect
         logger.error("Generator not initialized when handling streaming request")
         raise HTTPException(status_code=503, detail="Service not initialized")
 
-    logger.info(f"Starting streaming generation for use_case={arch_request.use_case}, platform={arch_request.cloud_platform}")
+    logger.info(
+        "Starting streaming generation for use_case=%s, platform=%s, provider=%s",
+        arch_request.use_case,
+        arch_request.cloud_platform,
+        arch_request.ai_provider,
+    )
 
     async def event_generator():
         try:
@@ -249,12 +315,21 @@ async def generate_code(request: Request, code_request: CodeGenerationRequest):
         raise HTTPException(status_code=503, detail="Service not initialized")
 
     try:
-        logger.info(f"Generating code for use_case={code_request.use_case}, platform={code_request.cloud_platform}")
+        logger.info(
+            "Generating code for use_case=%s, platform=%s, provider=%s",
+            code_request.use_case,
+            code_request.cloud_platform,
+            code_request.ai_provider,
+        )
         response = await generator.generate_code(code_request)
         logger.info("Code generation completed successfully")
         return response
     except ValueError as e:
         logger.warning(f"Code generation validation error: {e}")
+        if "Selected AI provider is not configured" in str(e):
+            raise HTTPException(status_code=503, detail="Selected AI provider is not configured")
+        if "OpenAI SDK is not installed" in str(e):
+            raise HTTPException(status_code=500, detail="Service configuration error.")
         raise HTTPException(status_code=400, detail="Invalid response format from AI model")
     except anthropic.APIConnectionError:
         logger.error("API Connection Error during code generation")
@@ -262,6 +337,18 @@ async def generate_code(request: Request, code_request: CodeGenerationRequest):
     except anthropic.RateLimitError:
         logger.warning("Anthropic rate limit exceeded during code generation")
         raise HTTPException(status_code=429, detail="Service busy. Please try again later.")
+    except OPENAI_CONNECTION_ERRORS:
+        logger.error("OpenAI API Connection Error during code generation")
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
+    except OPENAI_RATE_LIMIT_ERRORS:
+        logger.warning("OpenAI rate limit exceeded during code generation")
+        raise HTTPException(status_code=429, detail="Service busy. Please try again later.")
+    except OPENAI_AUTH_ERRORS:
+        logger.error("OpenAI Authentication Error during code generation")
+        raise HTTPException(status_code=500, detail="Service configuration error.")
+    except OPENAI_STATUS_ERRORS as e:
+        logger.error(f"OpenAI API Status Error during code generation: {e.status_code}")
+        raise HTTPException(status_code=500, detail="Failed to generate code.")
     except Exception:
         logger.exception("Unexpected error during code generation")
         raise HTTPException(

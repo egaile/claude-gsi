@@ -8,7 +8,7 @@ Base URL: `http://localhost:8000` (development) or your deployed backend URL.
 
 ## Authentication
 
-The API does not require authentication for requests. However, the backend requires an `ANTHROPIC_API_KEY` environment variable to communicate with Claude.
+The API does not require authentication for requests. However, the backend requires at least one AI provider key, such as `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, to generate architectures.
 
 ---
 
@@ -60,6 +60,7 @@ POST /api/generate-architecture
 {
   "useCase": "clinical-documentation",
   "cloudPlatform": "aws-bedrock",
+  "aiProvider": "openai",
   "integrationPattern": "api-gateway",
   "dataClassification": "phi",
   "scaleTier": "production"
@@ -72,6 +73,7 @@ POST /api/generate-architecture
 |-------|------|----------|--------|
 | `useCase` | string | Yes | `clinical-documentation`, `prior-authorization`, `medical-coding`, `patient-communication` |
 | `cloudPlatform` | string | Yes | `aws-bedrock`, `gcp-vertex` |
+| `aiProvider` | string | No | `claude`, `openai` (defaults to `claude` for backward compatibility) |
 | `integrationPattern` | string | Yes | `api-gateway`, `event-driven`, `batch-processing` |
 | `dataClassification` | string | Yes | `phi`, `pii`, `de-identified`, `public` |
 | `scaleTier` | string | Yes | `pilot`, `production`, `enterprise` |
@@ -108,7 +110,7 @@ POST /api/generate-architecture
         "priority": "required"
       }
     ],
-    "baaRequirements": "Obtain BAA from Anthropic for Claude API usage..."
+    "baaRequirements": "Obtain BAAs from the selected AI provider and cloud provider before processing PHI..."
   },
   "deployment": {
     "steps": [
@@ -123,8 +125,8 @@ POST /api/generate-architecture
     "monitoringSetup": "CloudWatch Logs for all Lambda functions..."
   },
   "sampleCode": {
-    "python": "import anthropic\n\nclient = anthropic.Anthropic()\n...",
-    "typescript": "import Anthropic from '@anthropic-ai/sdk';\n..."
+    "python": "# Provider-specific Python integration code...",
+    "typescript": "// Provider-specific TypeScript integration code..."
   }
 }
 ```
@@ -163,7 +165,7 @@ POST /api/generate-architecture
 |------|-------------|
 | 200 | Success |
 | 400 | Invalid request (validation error) |
-| 500 | Server error (Claude API failure, parsing error) |
+| 500 | Server error (AI provider API failure, parsing error) |
 | 503 | Service not initialized |
 
 ---
@@ -242,7 +244,8 @@ POST /api/generate-code
 {
   "useCase": "clinical-documentation",
   "cloudPlatform": "aws-bedrock",
-  "architectureSummary": "Components: API Gateway (Amazon API Gateway), Claude Service (AWS Bedrock). PHI touchpoints: AWS Bedrock."
+  "aiProvider": "openai",
+  "architectureSummary": "Components: API Gateway (Amazon API Gateway), AI Provider Service. PHI touchpoints: AI Provider Service."
 }
 ```
 
@@ -259,8 +262,8 @@ POST /api/generate-code
 ```json
 {
   "sampleCode": {
-    "python": "import anthropic\n\nclient = anthropic.Anthropic()\n...",
-    "typescript": "import Anthropic from '@anthropic-ai/sdk';\n..."
+    "python": "# Provider-specific Python integration code...",
+    "typescript": "// Provider-specific TypeScript integration code..."
   }
 }
 ```
@@ -290,8 +293,9 @@ All errors follow this format:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `Service not initialized` | Missing ANTHROPIC_API_KEY | Set the environment variable |
-| `Failed to parse Claude response as JSON` | Claude returned invalid JSON | Retry the request |
+| `Service not initialized` | Missing provider API key | Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
+| `Selected AI provider is not configured` | Request selected a provider without a configured key | Set the matching provider key or select another provider |
+| `Invalid response format from AI model` | AI provider returned invalid JSON | Retry the request |
 | `value is not a valid enumeration member` | Invalid enum value in request | Check allowed values |
 
 ---
@@ -400,7 +404,7 @@ For production, consider using persistent rate limiting with Redis or Vercel KV.
 
 | Operation | Timeout |
 |-----------|---------|
-| Claude API call | 120 seconds |
+| AI provider API call | 120 seconds |
 | Full generation | ~90 seconds |
 | Streaming generation | ~45-50 seconds |
 | Code generation | ~30-40 seconds |

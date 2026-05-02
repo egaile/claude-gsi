@@ -8,7 +8,7 @@ Always use Context7 when code generation, setup or configuration steps, or libra
 
 ## Project Overview
 
-Reference Architecture Generator - A tool that uses Claude to generate healthcare-specific deployment architectures. Demonstrates the product while building tools that help partners succeed with Claude.
+Reference Architecture Generator - A provider-agnostic tool that generates healthcare-specific enterprise AI deployment architectures for GSI partners. It supports Claude and OpenAI ChatGPT as selectable LLM providers.
 
 ## Development Commands
 
@@ -40,12 +40,12 @@ pytest -x            # Stop on first failure
 
 ## Architecture
 
-**Frontend** → **Backend** → **Claude API**
+**Frontend** → **Backend** → **Selected AI Provider API**
 
 ### Backend Flow
 1. `api/index.py` - Vercel serverless entry point with all endpoints
 2. `app/models.py` - Pydantic request/response models with camelCase aliases
-3. `app/services/generator.py` - `ArchitectureGenerator` class orchestrates prompt building and Claude calls
+3. `app/services/generator.py` - `ArchitectureGenerator` class orchestrates prompt building and provider calls
 
 ### API Endpoints
 - `POST /api/generate-architecture` - Full generation (includes sample code)
@@ -64,9 +64,9 @@ The generator builds prompts from files in `backend/prompts/`:
 
 ## Key Technical Details
 
-- **Model**: Uses `claude-sonnet-4-20250514` (configurable via `ANTHROPIC_MODEL` env var)
+- **Models**: Claude uses `ANTHROPIC_MODEL`; OpenAI ChatGPT uses `OPENAI_MODEL`
 - **Streaming**: Uses SSE (Server-Sent Events) with `sse-starlette` for progressive response
-- **Response parsing**: Claude returns raw JSON; generator strips markdown fences if present
+- **Response parsing**: AI providers return raw JSON; generator strips markdown fences if present
 - **CORS**: Configured via `CORS_ORIGINS` env var (comma-separated)
 - **Rate limiting**: 10 requests/minute per IP (in-memory, resets on cold start)
 - **Pydantic aliases**: Models use `Field(alias="camelCase")` with `populate_by_name = True`
@@ -81,6 +81,7 @@ VITE_API_URL=http://localhost:8000
 **Backend** `.env`:
 ```
 ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
 CORS_ORIGINS=http://localhost:5173
 ```
 
@@ -93,8 +94,8 @@ Full generation including sample code. Response time: ~90 seconds.
 SSE streaming endpoint. Returns sections progressively (architecture → compliance → deployment). Excludes sample code for faster response (~45-50 seconds).
 
 ### `POST /api/generate-code`
-On-demand code generation. Takes use case, cloud platform, and architecture summary. Returns Python and TypeScript samples (~60-120 seconds, can take up to 2+ minutes under load).
+On-demand code generation. Takes use case, cloud platform, AI provider, and architecture summary. Returns Python and TypeScript samples (~60-120 seconds, can take up to 2+ minutes under load).
 
-Request selects: use case, cloud platform, integration pattern, data classification, scale tier.
+Request selects: use case, cloud platform, AI provider, integration pattern, data classification, scale tier.
 
 See `backend/app/models.py` and `api/index.py` for full schema.

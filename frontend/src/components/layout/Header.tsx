@@ -11,7 +11,7 @@ export function Header() {
               Reference Architecture Generator
             </h1>
             <p className="text-sm text-gray-500">
-              Generate healthcare-specific Claude deployment architectures
+              Generate healthcare-specific AI deployment architectures
             </p>
           </div>
         </div>

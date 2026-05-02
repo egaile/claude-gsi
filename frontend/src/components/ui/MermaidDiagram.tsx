@@ -11,7 +11,17 @@ mermaid.initialize({
   fontFamily: 'Inter, system-ui, sans-serif',
 });
 
-// Fix common Mermaid syntax issues from Claude responses
+function cleanMermaidLabel(label: string): string {
+  return label
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/[()[\]{}]/g, '')
+    .replace(/[|]/g, ' ')
+    .replace(/\s*\/\s*/g, ' / ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Fix common Mermaid syntax issues from AI provider responses
 function sanitizeMermaidSyntax(diagram: string): string {
   let fixed = diagram;
 
@@ -32,10 +42,7 @@ function sanitizeMermaidSyntax(diagram: string): string {
     /(\w+)\[([^\[\]]*[(){}][^\[\]]*)\]/g,
     (_match, nodeId, label) => {
       // Remove parens/braces and quote the label
-      const cleanLabel = label
-        .replace(/[(){}]/g, '')   // Remove problematic chars (not brackets)
-        .replace(/\s+/g, ' ')     // Normalize whitespace
-        .trim();
+      const cleanLabel = cleanMermaidLabel(label);
       return `${nodeId}["${cleanLabel}"]`;
     }
   );
@@ -44,10 +51,7 @@ function sanitizeMermaidSyntax(diagram: string): string {
   fixed = fixed.replace(
     /(\w+)\(([^()]*[{}][^()]*)\)/g,
     (_match, nodeId, label) => {
-      const cleanLabel = label
-        .replace(/[{}]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const cleanLabel = cleanMermaidLabel(label);
       return `${nodeId}("${cleanLabel}")`;
     }
   );
@@ -56,11 +60,25 @@ function sanitizeMermaidSyntax(diagram: string): string {
   fixed = fixed.replace(
     /(\w+)\["([^"]*[(){}][^"]*)"\]/g,
     (_match, nodeId, label) => {
-      const cleanLabel = label
-        .replace(/[(){}]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const cleanLabel = cleanMermaidLabel(label);
       return `${nodeId}["${cleanLabel}"]`;
+    }
+  );
+
+  // Clean edge labels. Model output often includes punctuation that Mermaid
+  // accepts inconsistently depending on the surrounding arrow syntax.
+  fixed = fixed.replace(/\|([^|\n]+)\|/g, (_match, label) => {
+    const cleanLabel = cleanMermaidLabel(label);
+    return cleanLabel ? `|${cleanLabel}|` : '';
+  });
+
+  // Convert free-text edge labels to pipe labels and sanitize them:
+  // A -- PHI / entity extraction (optional de-id) --> B
+  fixed = fixed.replace(
+    /(\b[\w.:-]+\b)\s+--\s+([^-|\n][^-|\n]*?)\s+-->\s+(\b[\w.:-]+\b)/g,
+    (_match, from, label, to) => {
+      const cleanLabel = cleanMermaidLabel(label);
+      return cleanLabel ? `${from} -->|${cleanLabel}| ${to}` : `${from} --> ${to}`;
     }
   );
 
@@ -122,6 +140,26 @@ function sanitizeMermaidSyntax(diagram: string): string {
   return fixed;
 }
 
+function aggressivelySanitizeMermaidSyntax(diagram: string): string {
+  let fixed = sanitizeMermaidSyntax(diagram);
+
+  // Remove edge labels entirely as a fallback. The component and data-flow
+  // tables still preserve the detail if Mermaid cannot parse a rich label.
+  fixed = fixed.replace(/\|[^|\n]*\|/g, '');
+
+  // Simplify visible node labels while preserving graph structure.
+  fixed = fixed.replace(
+    /(\b\w+\b)\[([^\]\n]+)\]/g,
+    (_match, nodeId, label) => `${nodeId}["${cleanMermaidLabel(label)}"]`
+  );
+  fixed = fixed.replace(
+    /(\b\w+\b)\("([^"\n]+)"\)/g,
+    (_match, nodeId, label) => `${nodeId}("${cleanMermaidLabel(label)}")`
+  );
+
+  return fixed;
+}
+
 interface MermaidDiagramProps {
   diagram: string;
   className?: string;
@@ -142,7 +180,17 @@ export function MermaidDiagram({ diagram, className }: MermaidDiagramProps) {
 
         // Generate unique ID for this render
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        const { svg: renderedSvg } = await mermaid.render(id, sanitizedDiagram);
+        let renderedSvg: string;
+        try {
+          const result = await mermaid.render(id, sanitizedDiagram);
+          renderedSvg = result.svg;
+        } catch (initialError) {
+          console.warn('Retrying Mermaid render with aggressive sanitization:', initialError);
+          const fallbackDiagram = aggressivelySanitizeMermaidSyntax(diagram);
+          const fallbackId = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          const result = await mermaid.render(fallbackId, fallbackDiagram);
+          renderedSvg = result.svg;
+        }
         // Sanitize SVG to prevent XSS attacks (defense in depth)
         // Allow foreignObject and related elements needed for Mermaid text labels
         const sanitizedSvg = DOMPurify.sanitize(renderedSvg, {

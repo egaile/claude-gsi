@@ -20,6 +20,11 @@ class CloudPlatform(str, Enum):
     GCP_VERTEX = "gcp-vertex"
 
 
+class AIProvider(str, Enum):
+    CLAUDE = "claude"
+    OPENAI = "openai"
+
+
 class IntegrationPattern(str, Enum):
     API_GATEWAY = "api-gateway"
     EVENT_DRIVEN = "event-driven"
@@ -48,6 +53,7 @@ class ArchitectureRequest(BaseModel):
     integration_pattern: IntegrationPattern = Field(alias="integrationPattern")
     data_classification: DataClassification = Field(alias="dataClassification")
     scale_tier: ScaleTier = Field(alias="scaleTier")
+    ai_provider: AIProvider = Field(default=AIProvider.CLAUDE, alias="aiProvider")
 
     class Config:
         populate_by_name = True
@@ -147,6 +153,7 @@ class CodeGenerationRequest(BaseModel):
     use_case: UseCase = Field(alias="useCase")
     cloud_platform: CloudPlatform = Field(alias="cloudPlatform")
     architecture_summary: str = Field(alias="architectureSummary")
+    ai_provider: AIProvider = Field(default=AIProvider.CLAUDE, alias="aiProvider")
 
     class Config:
         populate_by_name = True

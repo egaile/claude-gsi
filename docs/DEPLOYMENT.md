@@ -11,7 +11,7 @@ This guide covers deploying the application to production using Vercel (frontend
 Before deploying, ensure you have:
 
 - [ ] GitHub account with the repository pushed
-- [ ] Anthropic API key from [console.anthropic.com](https://console.anthropic.com)
+- [ ] At least one AI provider API key: Anthropic and/or OpenAI
 - [ ] Vercel account (free tier available)
 - [ ] Railway or Render account (free tier available)
 
@@ -37,7 +37,10 @@ In the Railway dashboard, go to Variables and add:
 
 | Variable | Value |
 |----------|-------|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key, if enabling Claude |
+| `OPENAI_API_KEY` | Your OpenAI API key, if enabling OpenAI ChatGPT |
+| `ANTHROPIC_MODEL` | Optional Claude model override |
+| `OPENAI_MODEL` | Optional OpenAI model override |
 | `CORS_ORIGINS` | Your Vercel frontend URL (e.g., `https://your-app.vercel.app`) |
 | `ENVIRONMENT` | `production` |
 
@@ -76,7 +79,10 @@ In the Render dashboard, add environment variables:
 
 | Variable | Value |
 |----------|-------|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key, if enabling Claude |
+| `OPENAI_API_KEY` | Your OpenAI API key, if enabling OpenAI ChatGPT |
+| `ANTHROPIC_MODEL` | Optional Claude model override |
+| `OPENAI_MODEL` | Optional OpenAI model override |
 | `CORS_ORIGINS` | Your Vercel frontend URL |
 | `ENVIRONMENT` | `production` |
 
@@ -212,22 +218,22 @@ Both platforms support custom domains in their settings. Configure DNS according
 
 ### Backend returns 503 "Service not initialized"
 
-**Cause**: Missing or invalid `ANTHROPIC_API_KEY`
+**Cause**: Missing or invalid provider API key
 
-**Solution**: Verify the API key is set correctly in environment variables
+**Solution**: Set at least one valid provider key: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
 
-### Backend returns 500 "Failed to parse Claude response"
+### Backend returns 500 "Invalid response format from AI model"
 
-**Cause**: Claude API returned truncated or invalid JSON
+**Cause**: The selected AI provider returned truncated or invalid JSON
 
 **Solutions**:
 1. Retry the request
-2. Check Claude API status at [status.anthropic.com](https://status.anthropic.com)
-3. Verify API key has sufficient quota
+2. Check the selected provider status page
+3. Verify the provider API key has sufficient quota
 
 ### Slow response times
 
-**Cause**: Claude API processing time
+**Cause**: AI provider processing time
 
 **Solutions**:
 1. This is expected (5-10 seconds for generation)
@@ -259,10 +265,10 @@ Both platforms support custom domains in their settings. Configure DNS according
 - Free tier: 750 hours/month, spins down after 15 minutes inactivity
 - Starter tier: $7/month for always-on
 
-### Anthropic API
+### AI Provider APIs
 - Pay-per-token pricing
 - Estimate ~$0.02-0.05 per architecture generation
-- Monitor usage in Anthropic console
+- Monitor usage in each configured provider console
 
 ---
 
@@ -270,7 +276,7 @@ Both platforms support custom domains in their settings. Configure DNS according
 
 Before going live:
 
-- [ ] `ANTHROPIC_API_KEY` is set as environment variable (not in code)
+- [ ] Provider API keys are set as environment variables (not in code)
 - [ ] `CORS_ORIGINS` is set to specific domain (not `*`)
 - [ ] `ENVIRONMENT` is set to `production`
 - [ ] HTTPS is enabled (automatic on Vercel/Railway/Render)

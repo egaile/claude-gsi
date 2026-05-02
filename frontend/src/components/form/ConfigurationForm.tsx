@@ -2,6 +2,7 @@ import type { ArchitectureRequest } from '../../lib/types';
 import {
   USE_CASE_OPTIONS,
   CLOUD_PLATFORM_OPTIONS,
+  AI_PROVIDER_OPTIONS,
   INTEGRATION_PATTERN_OPTIONS,
   DATA_CLASSIFICATION_OPTIONS,
   SCALE_TIER_OPTIONS,
@@ -72,6 +73,30 @@ export function ConfigurationForm({
           </select>
           <p className="mt-1 text-sm text-gray-500">
             {CLOUD_PLATFORM_OPTIONS[formData.cloudPlatform].description}
+          </p>
+        </div>
+
+        {/* AI Provider Select */}
+        <div>
+          <label className="label">AI Provider</label>
+          <select
+            className="select mt-1"
+            value={formData.aiProvider}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                aiProvider: e.target.value as ArchitectureRequest['aiProvider'],
+              }))
+            }
+          >
+            {Object.entries(AI_PROVIDER_OPTIONS).map(([value, { label }]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-sm text-gray-500">
+            {AI_PROVIDER_OPTIONS[formData.aiProvider].description}
           </p>
         </div>
 

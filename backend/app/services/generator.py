@@ -1,7 +1,7 @@
 """
 Architecture Generator Service
 
-Integrates with Claude API to generate healthcare reference architectures.
+Integrates with configured AI providers to generate healthcare reference architectures.
 """
 
 import json
@@ -13,7 +13,15 @@ from typing import AsyncGenerator, Optional
 
 import anthropic
 
+try:
+    import openai
+    from openai import OpenAI
+except ImportError:  # pragma: no cover - handled at runtime when provider is selected
+    openai = None
+    OpenAI = None
+
 from app.models import (
+    AIProvider,
     ArchitectureRequest,
     ArchitectureResponse,
     CodeGenerationRequest,
@@ -25,17 +33,32 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_RESPONSE_SIZE = 500_000  # 500KB limit for Claude responses
+MAX_RESPONSE_SIZE = 500_000  # 500KB limit for model responses
 
 
 class ArchitectureGenerator:
-    """Generates healthcare reference architectures using Claude."""
+    """Generates healthcare reference architectures using the selected AI provider."""
 
-    def __init__(self, api_key: str):
-        # Add timeout to prevent hanging requests (120 seconds)
-        self.client = anthropic.Anthropic(api_key=api_key, timeout=120.0)
-        # Model configurable via env var with sensible default
+    def __init__(
+        self,
+        anthropic_api_key: Optional[str] = None,
+        openai_api_key: Optional[str] = None,
+    ):
+        # Add timeouts to prevent hanging requests (120 seconds)
+        self.anthropic_client = (
+            anthropic.Anthropic(api_key=anthropic_api_key, timeout=120.0)
+            if anthropic_api_key
+            else None
+        )
+        self.openai_client = (
+            OpenAI(api_key=openai_api_key, timeout=120.0)
+            if openai_api_key and OpenAI is not None
+            else None
+        )
+        # Backwards-compatible aliases used by existing tests and integrations.
+        self.client = self.anthropic_client
         self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-5.2")
         self.prompts_dir = Path(__file__).parent.parent.parent / "prompts"
         self.templates_dir = Path(__file__).parent.parent.parent / "templates"
         
@@ -157,16 +180,133 @@ class ArchitectureGenerator:
             return self.aws_context
         return self.gcp_context
 
+    def _get_ai_provider_context(self, provider: AIProvider) -> str:
+        """Get provider-specific architecture guidance."""
+        if provider == AIProvider.OPENAI:
+            return f"""
+## AI Provider Context: OpenAI ChatGPT
+
+- Use OpenAI ChatGPT models as the LLM endpoint.
+- Default backend model is configurable with OPENAI_MODEL; current default is {self.openai_model}.
+- Store OPENAI_API_KEY in the backend secret manager for the selected cloud.
+- For PHI workloads, require an appropriate OpenAI agreement/BAA and confirm healthcare data handling controls before production use.
+- In diagrams and code, label the LLM component as OpenAI ChatGPT or OpenAI API.
+- Do not use Claude-specific request formats, model IDs, SDK imports, or service names in generated sample code.
+"""
+
+        return f"""
+## AI Provider Context: Claude
+
+- Use Claude models as the LLM endpoint.
+- Default backend model is configurable with ANTHROPIC_MODEL; current default is {self.model}.
+- Store ANTHROPIC_API_KEY in the backend secret manager for the selected cloud unless using a cloud-managed Claude endpoint.
+- For PHI workloads, require an appropriate Anthropic/cloud provider BAA and confirm healthcare data handling controls before production use.
+- In diagrams and code, label the LLM component as Claude.
+- Do not use OpenAI-specific request formats, model IDs, SDK imports, or service names in generated sample code.
+"""
+
+    def _ensure_provider_configured(self, provider: AIProvider) -> None:
+        """Ensure the selected provider has a configured client."""
+        if provider == AIProvider.OPENAI:
+            if OpenAI is None:
+                raise ValueError("OpenAI SDK is not installed")
+            if self.openai_client is None:
+                raise ValueError("Selected AI provider is not configured")
+            return
+
+        if self.anthropic_client is None:
+            raise ValueError("Selected AI provider is not configured")
+
+    def _create_completion(
+        self,
+        provider: AIProvider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+    ) -> tuple[str, Optional[str]]:
+        """Create a non-streaming completion and return text plus finish reason."""
+        self._ensure_provider_configured(provider)
+
+        if provider == AIProvider.OPENAI:
+            response = self.openai_client.chat.completions.create(
+                model=self.openai_model,
+                max_completion_tokens=max_tokens,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            choice = response.choices[0]
+            return choice.message.content or "", choice.finish_reason
+
+        message = self.anthropic_client.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=[{
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"}
+            }],
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ],
+        )
+        return message.content[0].text, message.stop_reason
+
+    def _stream_completion(
+        self,
+        provider: AIProvider,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+    ):
+        """Yield text chunks from the selected provider."""
+        self._ensure_provider_configured(provider)
+
+        if provider == AIProvider.OPENAI:
+            stream = self.openai_client.chat.completions.create(
+                model=self.openai_model,
+                max_completion_tokens=max_tokens,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                stream=True,
+            )
+            for chunk in stream:
+                if chunk.choices:
+                    text = chunk.choices[0].delta.content
+                    if text:
+                        yield text
+            return
+
+        with self.anthropic_client.messages.stream(
+            model=self.model,
+            max_tokens=max_tokens,
+            system=[{
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"}
+            }],
+            messages=[{"role": "user", "content": user_prompt}],
+        ) as stream:
+            for text in stream.text_stream:
+                yield text
+
     def _build_user_prompt(self, request: ArchitectureRequest) -> str:
-        """Build the user prompt for Claude."""
+        """Build the user prompt for the selected AI provider."""
         use_case_context = self._get_use_case_context(request.use_case)
         cloud_context = self._get_cloud_context(request.cloud_platform)
+        ai_provider_context = self._get_ai_provider_context(request.ai_provider)
 
         return f"""Generate a complete reference architecture for the following configuration:
 
 ## Configuration
 - **Use Case**: {request.use_case.value}
-- **Cloud Platform**: {request.cloud_platform.value}
+- **Deployment Cloud**: {request.cloud_platform.value}
+- **AI Provider**: {request.ai_provider.value}
 - **Integration Pattern**: {request.integration_pattern.value}
 - **Data Classification**: {request.data_classification.value}
 - **Scale Tier**: {request.scale_tier.value}
@@ -178,6 +318,8 @@ class ArchitectureGenerator:
 
 ## Cloud Platform Context
 {cloud_context}
+
+{ai_provider_context}
 
 ## Example Output Format
 {self.example_output}
@@ -193,35 +335,32 @@ Focus on:
 2. Specific compliance items for this use case and data classification
 3. Cloud-specific deployment steps with actual service names
 4. Production-quality sample code with proper error handling
+5. Use the selected AI provider consistently throughout diagrams, component names, BAA guidance, and sample code
 
 Generate the JSON response now:"""
 
     async def generate(self, request: ArchitectureRequest) -> ArchitectureResponse:
-        """Generate architecture using Claude."""
+        """Generate architecture using the selected AI provider."""
 
         user_prompt = self._build_user_prompt(request)
-        logger.debug(f"Built prompt for use_case={request.use_case}, platform={request.cloud_platform}")
+        logger.debug(
+            "Built prompt for use_case=%s, platform=%s, provider=%s",
+            request.use_case,
+            request.cloud_platform,
+            request.ai_provider,
+        )
 
-        message = self.client.messages.create(
-            model=self.model,
-            max_tokens=32768,
-            system=[{
-                "type": "text",
-                "text": self.system_prompt,
-                "cache_control": {"type": "ephemeral"}
-            }],
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ],
+        response_text, finish_reason = self._create_completion(
+            request.ai_provider,
+            self.system_prompt,
+            user_prompt,
+            32768,
         )
 
         # Check if response was truncated
-        if message.stop_reason == "max_tokens":
+        if finish_reason in {"max_tokens", "length"}:
             logger.warning("Response was truncated due to max_tokens limit")
             raise ValueError("Response exceeded maximum length. Please try a simpler configuration.")
-
-        # Extract the response text
-        response_text = message.content[0].text
 
         # Validate response size
         if len(response_text) > MAX_RESPONSE_SIZE:
@@ -242,7 +381,7 @@ Generate the JSON response now:"""
         try:
             data = json.loads(response_text)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Claude response as JSON: {e}")
+            logger.error(f"Failed to parse AI model response as JSON: {e}")
             raise ValueError("Invalid response format from AI model")
 
         # Validate required keys exist
@@ -259,10 +398,12 @@ Generate the JSON response now:"""
         """Build the user prompt for streaming (excludes sampleCode)."""
         use_case_context = self._get_use_case_context(request.use_case)
         cloud_context = self._get_cloud_context(request.cloud_platform)
+        ai_provider_context = self._get_ai_provider_context(request.ai_provider)
 
         return f"""Generate a healthcare reference architecture for:
 - Use Case: {request.use_case.value}
-- Cloud Platform: {request.cloud_platform.value}
+- Deployment Cloud: {request.cloud_platform.value}
+- AI Provider: {request.ai_provider.value}
 - Integration Pattern: {request.integration_pattern.value}
 - Data Classification: {request.data_classification.value}
 - Scale Tier: {request.scale_tier.value}
@@ -274,6 +415,8 @@ Generate the JSON response now:"""
 
 ## Cloud Platform Context
 {cloud_context}
+
+{ai_provider_context}
 
 Return valid JSON with this structure (NO sampleCode - it will be generated separately):
 {{
@@ -294,7 +437,7 @@ Return valid JSON with this structure (NO sampleCode - it will be generated sepa
   }}
 }}
 
-Return ONLY the JSON, no markdown or explanation."""
+Return ONLY the JSON, no markdown or explanation. Use the selected AI provider consistently."""
 
     async def generate_stream(self, request: ArchitectureRequest) -> AsyncGenerator[dict, None]:
         """Stream architecture generation with SSE events (excludes sampleCode)."""
@@ -310,32 +453,27 @@ IMPORTANT: Do NOT include sampleCode in your response. Code samples will be gene
             # Send immediate "started" event so UI shows activity
             yield {"event": "started", "data": json.dumps({"status": "generating"})}
 
-            with self.client.messages.stream(
-                model=self.model,
-                max_tokens=24576,
-                system=[{
-                    "type": "text",
-                    "text": system_prompt_streaming,
-                    "cache_control": {"type": "ephemeral"}
-                }],
-                messages=[{"role": "user", "content": user_prompt}],
-            ) as stream:
-                for text in stream.text_stream:
-                    accumulated_text += text
+            for text in self._stream_completion(
+                request.ai_provider,
+                system_prompt_streaming,
+                user_prompt,
+                24576,
+            ):
+                accumulated_text += text
 
-                    # Try to extract and emit completed sections
-                    for section_name in ["architecture", "compliance", "deployment"]:
-                        if section_name not in emitted_sections:
-                            section_data = self._try_extract_section(accumulated_text, section_name)
-                            if section_data is not None:
-                                emitted_sections.add(section_name)
-                                yield {
-                                    "event": "section",
-                                    "data": json.dumps({
-                                        "section": section_name,
-                                        "data": section_data
-                                    })
-                                }
+                # Try to extract and emit completed sections
+                for section_name in ["architecture", "compliance", "deployment"]:
+                    if section_name not in emitted_sections:
+                        section_data = self._try_extract_section(accumulated_text, section_name)
+                        if section_data is not None:
+                            emitted_sections.add(section_name)
+                            yield {
+                                "event": "section",
+                                "data": json.dumps({
+                                    "section": section_name,
+                                    "data": section_data
+                                })
+                            }
 
             # Emit completion event
             yield {"event": "done", "data": json.dumps({"status": "complete"})}
@@ -384,12 +522,16 @@ IMPORTANT: Do NOT include sampleCode in your response. Code samples will be gene
     async def generate_code(self, request: CodeGenerationRequest) -> CodeGenerationResponse:
         """Generate sample code based on architecture context."""
         system_prompt_code = """You are an expert Healthcare IT developer. Generate production-quality sample code for integrating with healthcare AI architectures. Include proper error handling, logging, and PHI compliance comments."""
+        ai_provider_context = self._get_ai_provider_context(request.ai_provider)
 
         user_prompt = f"""Generate production-quality sample code for a healthcare AI integration:
 
 Use Case: {request.use_case.value}
-Cloud Platform: {request.cloud_platform.value}
+Deployment Cloud: {request.cloud_platform.value}
+AI Provider: {request.ai_provider.value}
 Architecture Summary: {request.architecture_summary}
+
+{ai_provider_context}
 
 Return JSON with this structure:
 {{
@@ -402,24 +544,21 @@ Return JSON with this structure:
 Requirements:
 - Include proper error handling and logging
 - Add PHI compliance comments where relevant
-- Use cloud-specific SDK (boto3 for AWS, google-cloud for GCP)
+- Use the selected AI provider SDK/API and cloud-specific SDK where relevant (boto3 for AWS, google-cloud for GCP)
 - Include authentication and rate limiting
 - Follow security best practices
+- Do not mix provider-specific SDKs or request formats
 
 Return ONLY the JSON, no markdown or explanation."""
 
-        message = self.client.messages.create(
-            model=self.model,
-            max_tokens=16384,
-            system=[{
-                "type": "text",
-                "text": system_prompt_code,
-                "cache_control": {"type": "ephemeral"}
-            }],
-            messages=[{"role": "user", "content": user_prompt}],
+        response_text, _ = self._create_completion(
+            request.ai_provider,
+            system_prompt_code,
+            user_prompt,
+            16384,
         )
 
-        response_text = message.content[0].text.strip()
+        response_text = response_text.strip()
 
         # Clean markdown code blocks if present
         if response_text.startswith("```"):

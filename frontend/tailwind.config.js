@@ -7,7 +7,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Claude orange palette
+        // Enterprise AI accent palette
         'anthropic': {
           50: '#fff7ed',
           100: '#ffedd5',

@@ -7,6 +7,8 @@ export type UseCase =
 
 export type CloudPlatform = 'aws-bedrock' | 'gcp-vertex';
 
+export type AIProvider = 'claude' | 'openai';
+
 export type IntegrationPattern = 'api-gateway' | 'event-driven' | 'batch-processing';
 
 export type DataClassification = 'phi' | 'pii' | 'de-identified' | 'public';
@@ -19,6 +21,7 @@ export interface ArchitectureRequest {
   integrationPattern: IntegrationPattern;
   dataClassification: DataClassification;
   scaleTier: ScaleTier;
+  aiProvider: AIProvider;
 }
 
 // Response types
@@ -93,6 +96,7 @@ export interface CodeGenerationRequest {
   useCase: UseCase;
   cloudPlatform: CloudPlatform;
   architectureSummary: string;
+  aiProvider: AIProvider;
 }
 
 // UI state types
@@ -135,12 +139,23 @@ export const USE_CASE_OPTIONS: Record<UseCase, { label: string; description: str
 
 export const CLOUD_PLATFORM_OPTIONS: Record<CloudPlatform, { label: string; description: string }> = {
   'aws-bedrock': {
-    label: 'AWS Bedrock',
-    description: 'Amazon Bedrock with Claude models',
+    label: 'AWS',
+    description: 'AWS healthcare services and secure AI workload patterns',
   },
   'gcp-vertex': {
-    label: 'GCP Vertex AI',
-    description: 'Google Cloud Vertex AI with Claude',
+    label: 'Google Cloud',
+    description: 'Google Cloud healthcare services and secure AI workload patterns',
+  },
+};
+
+export const AI_PROVIDER_OPTIONS: Record<AIProvider, { label: string; description: string }> = {
+  claude: {
+    label: 'Claude',
+    description: 'Anthropic Claude models for enterprise healthcare AI workflows',
+  },
+  openai: {
+    label: 'OpenAI ChatGPT',
+    description: 'OpenAI ChatGPT models for enterprise healthcare AI workflows',
   },
 };
 

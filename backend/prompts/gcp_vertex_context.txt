@@ -1,10 +1,10 @@
-# GCP Vertex AI Healthcare Architecture Context
+# Google Cloud Healthcare AI Architecture Context
 
 ## Core Services
 
 ### Vertex AI
 - **Service**: Unified ML platform with model garden
-- **Claude Access**: Claude models via Model Garden / Partner Models
+- **LLM Access**: Use when the selected AI provider is available through Vertex AI partner models; otherwise call the selected provider API from the Google Cloud workload through controlled egress
 - **Key Features**: Model inference, fine-tuning, evaluation
 - **HIPAA**: Covered under GCP BAA
 - **Pricing**: Pay per token (input/output)
@@ -24,7 +24,7 @@
 
 ### API Gateway Pattern (Cloud Endpoints / API Gateway)
 ```
-Client → Cloud Endpoints → Cloud Run → Vertex AI
+Client → Cloud Endpoints → Cloud Run → AI Provider Endpoint
                         ↓
                  VPC Service Controls
 ```
@@ -34,7 +34,7 @@ Client → Cloud Endpoints → Cloud Run → Vertex AI
 
 ### Event-Driven Pattern
 ```
-Source → Pub/Sub → Cloud Functions → Vertex AI
+Source → Pub/Sub → Cloud Functions → AI Provider Endpoint
                               ↓
                     Firestore (results)
 ```
@@ -44,7 +44,7 @@ Source → Pub/Sub → Cloud Functions → Vertex AI
 
 ### Batch Processing Pattern
 ```
-GCS (input) → Workflows → Cloud Run → Vertex AI
+GCS (input) → Workflows → Cloud Run → AI Provider Endpoint
                       ↓
                GCS (output)
 ```
@@ -142,7 +142,8 @@ Use these node names for GCP architectures:
 - `apigw[API Gateway]`
 - `run[Cloud Run]`
 - `functions[Cloud Functions]`
-- `vertex[Vertex AI\nClaude]`
+- `llm[Selected AI Provider]`
+- `vertex[Vertex AI]`
 - `gcs[(Cloud Storage)]`
 - `firestore[(Firestore)]`
 - `bigquery[(BigQuery)]`

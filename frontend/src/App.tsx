@@ -21,6 +21,7 @@ function App() {
     integrationPattern: 'api-gateway',
     dataClassification: 'phi',
     scaleTier: 'production',
+    aiProvider: 'claude',
   });
 
   const handleGenerate = useCallback(async () => {
@@ -66,6 +67,7 @@ function App() {
       const sampleCode = await generateCode({
         useCase: formData.useCase,
         cloudPlatform: formData.cloudPlatform,
+        aiProvider: formData.aiProvider,
         architectureSummary,
       });
 
@@ -81,7 +83,7 @@ function App() {
         codeLoading: false,
       }));
     }
-  }, [state.architecture, formData.useCase, formData.cloudPlatform]);
+  }, [state.architecture, formData.useCase, formData.cloudPlatform, formData.aiProvider]);
 
   const handleReset = () => {
     setState({ status: 'idle' });

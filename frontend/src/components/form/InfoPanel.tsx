@@ -25,14 +25,14 @@ export function InfoPanel() {
         </ul>
       </div>
 
-      <div className="card p-6 bg-anthropic-50 border-anthropic-200">
-        <h3 className="font-semibold text-anthropic-900 mb-2 flex items-center gap-2">
+      <div className="card p-6 bg-blue-50 border-blue-200">
+        <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
           <Cpu className="w-5 h-5" />
-          Powered by Claude
+          AI Provider Choice
         </h3>
-        <p className="text-sm text-anthropic-700">
-          This tool uses Claude to generate reference architectures, demonstrating the product
-          while building tools that help partners succeed with Claude.
+        <p className="text-sm text-blue-700">
+          Select Claude or OpenAI ChatGPT as the LLM provider while keeping the
+          healthcare architecture, cloud deployment, and compliance guidance provider-neutral.
         </p>
       </div>
     </div>

@@ -1,10 +1,10 @@
-# AWS Bedrock Healthcare Architecture Context
+# AWS Healthcare AI Architecture Context
 
 ## Core Services
 
 ### Amazon Bedrock
 - **Service**: Fully managed foundation model service
-- **Claude Access**: Claude models available via Bedrock API
+- **LLM Access**: Use when the selected AI provider is available through Amazon Bedrock; otherwise call the selected provider API from the AWS workload through controlled egress
 - **Key Features**: Model inference, fine-tuning (select models), guardrails
 - **HIPAA**: Eligible service, requires BAA
 - **Pricing**: Pay per token (input/output)
@@ -24,17 +24,17 @@
 
 ### API Gateway Pattern
 ```
-Client → API Gateway → Lambda → Bedrock
+Client → API Gateway → Lambda → AI Provider Endpoint
                     ↓
               VPC Endpoint (PrivateLink)
 ```
 - API Gateway handles authentication, rate limiting
-- Lambda in VPC for secure Bedrock access
+- Lambda in VPC for secure AI provider access
 - VPC Endpoint keeps traffic off public internet
 
 ### Event-Driven Pattern
 ```
-Source → EventBridge → SQS → Lambda → Bedrock
+Source → EventBridge → SQS → Lambda → AI Provider Endpoint
                             ↓
                     DynamoDB (results)
 ```
@@ -44,7 +44,7 @@ Source → EventBridge → SQS → Lambda → Bedrock
 
 ### Batch Processing Pattern
 ```
-S3 (input) → Step Functions → Lambda → Bedrock
+S3 (input) → Step Functions → Lambda → AI Provider Endpoint
                            ↓
                     S3 (output)
 ```
@@ -82,7 +82,7 @@ S3 (input) → Step Functions → Lambda → Bedrock
 
 ## IAM Policy Examples
 
-### Bedrock Invoke Policy
+### AI Provider Invoke Policy
 ```json
 {
   "Version": "2012-10-17",
@@ -93,7 +93,7 @@ S3 (input) → Step Functions → Lambda → Bedrock
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "arn:aws:bedrock:*::foundation-model/anthropic.claude-*"
+      "Resource": "arn:aws:bedrock:*::foundation-model/*"
     }
   ]
 }
@@ -135,7 +135,8 @@ S3 (input) → Step Functions → Lambda → Bedrock
 Use these node names for AWS architectures:
 - `apigw[API Gateway]`
 - `lambda[Lambda]`
-- `bedrock[Amazon Bedrock\nClaude]`
+- `llm[Selected AI Provider]`
+- `bedrock[Amazon Bedrock]`
 - `s3[(S3 Bucket)]`
 - `dynamodb[(DynamoDB)]`
 - `sqs[[SQS Queue]]`
