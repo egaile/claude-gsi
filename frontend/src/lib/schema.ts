@@ -2,6 +2,53 @@ import { z } from 'zod';
 
 // Response validation schemas using Zod for runtime type checking
 
+function normalizeComplianceCategory(value: unknown) {
+  if (typeof value !== 'string') return value;
+
+  const normalized = value.toLowerCase().trim().replace(/[_\s-]+/g, '-');
+  if (normalized.includes('physical')) return 'physical';
+  if (
+    normalized.includes('technical') ||
+    normalized.includes('security') ||
+    normalized.includes('encryption') ||
+    normalized.includes('audit') ||
+    normalized.includes('access')
+  ) {
+    return 'technical';
+  }
+  if (
+    normalized.includes('administrative') ||
+    normalized.includes('admin') ||
+    normalized.includes('privacy') ||
+    normalized.includes('baa') ||
+    normalized.includes('policy') ||
+    normalized.includes('training') ||
+    normalized.includes('governance') ||
+    normalized.includes('organizational')
+  ) {
+    return 'administrative';
+  }
+
+  return 'technical';
+}
+
+function normalizePriority(value: unknown) {
+  if (typeof value !== 'string') return value;
+
+  const normalized = value.toLowerCase().trim();
+  if (normalized.includes('address')) return 'addressable';
+  if (
+    normalized.includes('required') ||
+    normalized.includes('critical') ||
+    normalized.includes('high') ||
+    normalized.includes('must')
+  ) {
+    return 'required';
+  }
+
+  return 'recommended';
+}
+
 export const ArchitectureComponentSchema = z.object({
   name: z.string(),
   service: z.string(),
@@ -17,10 +64,16 @@ export const DataFlowSchema = z.object({
 });
 
 export const ComplianceItemSchema = z.object({
-  category: z.enum(['administrative', 'physical', 'technical']),
+  category: z.preprocess(
+    normalizeComplianceCategory,
+    z.enum(['administrative', 'physical', 'technical'])
+  ),
   requirement: z.string(),
   implementation: z.string(),
-  priority: z.enum(['required', 'recommended', 'addressable']),
+  priority: z.preprocess(
+    normalizePriority,
+    z.enum(['required', 'recommended', 'addressable'])
+  ),
 });
 
 export const ArchitectureSchema = z.object({

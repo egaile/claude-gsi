@@ -23,10 +23,13 @@ except ImportError:  # pragma: no cover - handled at runtime when provider is se
 
 from app.models import (
     AIProvider,
+    Architecture,
     ArchitectureRequest,
     ArchitectureResponse,
     CodeGenerationRequest,
     CodeGenerationResponse,
+    Compliance,
+    Deployment,
     UseCase,
     CloudPlatform,
 )
@@ -503,10 +506,72 @@ The response must be valid JSON. Use the selected AI provider consistently."""
         response_text = self._strip_markdown_fences(response_text)
 
         try:
-            return json.loads(response_text)
+            section_data = json.loads(response_text)
         except json.JSONDecodeError as e:
             logger.error("Failed to parse %s section response as JSON: %s", section_name, e)
             raise ValueError("Invalid response format from AI model") from e
+
+        return self._normalize_and_validate_section(section_name, section_data)
+
+    @staticmethod
+    def _normalize_compliance_category(value: object) -> object:
+        """Map model-generated category variants to HIPAA safeguard buckets."""
+        if not isinstance(value, str):
+            return value
+
+        normalized = re.sub(r"[_\s-]+", "-", value.lower().strip())
+        if "physical" in normalized:
+            return "physical"
+        if any(
+            keyword in normalized
+            for keyword in ["technical", "security", "encryption", "audit", "access"]
+        ):
+            return "technical"
+        if any(
+            keyword in normalized
+            for keyword in [
+                "administrative",
+                "admin",
+                "privacy",
+                "baa",
+                "policy",
+                "training",
+                "governance",
+                "organizational",
+            ]
+        ):
+            return "administrative"
+
+        return "technical"
+
+    @staticmethod
+    def _normalize_priority(value: object) -> object:
+        """Map model-generated priority variants to supported values."""
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.lower().strip()
+        if "address" in normalized:
+            return "addressable"
+        if any(keyword in normalized for keyword in ["required", "critical", "high", "must"]):
+            return "required"
+        return "recommended"
+
+    def _normalize_and_validate_section(self, section_name: str, section_data: dict) -> dict:
+        """Normalize provider output and validate each streamable section."""
+        if section_name == "compliance":
+            for item in section_data.get("checklist", []):
+                item["category"] = self._normalize_compliance_category(item.get("category"))
+                item["priority"] = self._normalize_priority(item.get("priority"))
+            return Compliance.model_validate(section_data).model_dump(by_alias=True)
+
+        if section_name == "architecture":
+            return Architecture.model_validate(section_data).model_dump(by_alias=True)
+
+        if section_name == "deployment":
+            return Deployment.model_validate(section_data).model_dump(by_alias=True)
+
+        return section_data
 
     async def generate_stream(self, request: ArchitectureRequest) -> AsyncGenerator[dict, None]:
         """Stream architecture generation with parallel section calls and SSE events."""

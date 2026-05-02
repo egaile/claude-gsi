@@ -215,6 +215,37 @@ class TestArchitectureGenerator:
         ]
         assert all(payload.get("cached") is True for payload in cached_payloads)
 
+    def test_normalizes_compliance_section_variants(self, mock_anthropic_client):
+        """Compliance section validation should tolerate common model labels."""
+        from app.services.generator import ArchitectureGenerator
+
+        generator = ArchitectureGenerator("sk-ant-api03-test-key")
+        section = generator._normalize_and_validate_section(
+            "compliance",
+            {
+                "checklist": [
+                    {
+                        "category": "privacy",
+                        "requirement": "BAA",
+                        "implementation": "Execute agreements",
+                        "priority": "high",
+                    },
+                    {
+                        "category": "security",
+                        "requirement": "Audit logs",
+                        "implementation": "Enable logging",
+                        "priority": "nice-to-have",
+                    },
+                ],
+                "baaRequirements": "Required",
+            },
+        )
+
+        assert section["checklist"][0]["category"] == "administrative"
+        assert section["checklist"][0]["priority"] == "required"
+        assert section["checklist"][1]["category"] == "technical"
+        assert section["checklist"][1]["priority"] == "recommended"
+
 
 class TestResponseSizeLimit:
     """Tests for response size validation."""
