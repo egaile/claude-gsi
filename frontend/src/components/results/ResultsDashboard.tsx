@@ -1,9 +1,22 @@
-import { Layers, Shield, Rocket, Code, ArrowLeft, Download } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Code,
+  Download,
+  FileText,
+  Layers,
+  Rocket,
+  Route,
+  Shield,
+} from 'lucide-react';
 import { Tabs } from './Tabs';
 import { ArchitectureTab } from './ArchitectureTab';
 import { ComplianceTab } from './ComplianceTab';
 import { DeploymentTab } from './DeploymentTab';
 import { CodeTab } from './CodeTab';
+import { RoadmapTab } from './RoadmapTab';
+import { RiskTab } from './RiskTab';
+import { SummaryTab } from './SummaryTab';
 import type {
   ArchitectureRequest,
   Architecture,
@@ -12,6 +25,11 @@ import type {
   SampleCode
 } from '../../lib/types';
 import { downloadFile } from '../../lib/utils';
+import {
+  buildExecutiveSummary,
+  buildRiskRegister,
+  buildRoadmap,
+} from '../../lib/insights';
 
 interface ResultsDashboardProps {
   architecture?: Architecture;
@@ -66,7 +84,23 @@ export function ResultsDashboard({
   codeLoading,
   isStreaming
 }: ResultsDashboardProps) {
+  const summary = architecture && compliance && deployment
+    ? buildExecutiveSummary(request, architecture, compliance, deployment)
+    : undefined;
+  const roadmap = architecture && compliance
+    ? buildRoadmap(request, architecture, compliance)
+    : undefined;
+  const risks = architecture && compliance
+    ? buildRiskRegister(request, architecture, compliance)
+    : undefined;
+
   const tabs = [
+    {
+      id: 'summary',
+      label: 'Summary',
+      icon: <FileText className="w-4 h-4" />,
+      loading: !summary
+    },
     {
       id: 'architecture',
       label: 'Architecture',
@@ -84,6 +118,18 @@ export function ResultsDashboard({
       label: 'Deployment',
       icon: <Rocket className="w-4 h-4" />,
       loading: !deployment
+    },
+    {
+      id: 'roadmap',
+      label: 'Roadmap',
+      icon: <Route className="w-4 h-4" />,
+      loading: !roadmap
+    },
+    {
+      id: 'risks',
+      label: 'Risks',
+      icon: <AlertTriangle className="w-4 h-4" />,
+      loading: !risks
     },
     {
       id: 'code',
@@ -132,9 +178,15 @@ export function ResultsDashboard({
         </div>
       </div>
 
-      <Tabs tabs={tabs} defaultTab="architecture">
+      <Tabs tabs={tabs} defaultTab="summary">
         {(activeTab) => {
           switch (activeTab) {
+            case 'summary':
+              return summary ? (
+                <SummaryTab summary={summary} />
+              ) : (
+                <LoadingSkeleton label="executive summary" />
+              );
             case 'architecture':
               return architecture ? (
                 <ArchitectureTab architecture={architecture} />
@@ -152,6 +204,18 @@ export function ResultsDashboard({
                 <DeploymentTab deployment={deployment} />
               ) : (
                 <LoadingSkeleton label="deployment guide" />
+              );
+            case 'roadmap':
+              return roadmap ? (
+                <RoadmapTab phases={roadmap} />
+              ) : (
+                <LoadingSkeleton label="implementation roadmap" />
+              );
+            case 'risks':
+              return risks ? (
+                <RiskTab risks={risks} />
+              ) : (
+                <LoadingSkeleton label="risk register" />
               );
             case 'code':
               return (
@@ -185,6 +249,12 @@ function generateMarkdown(response: PartialResponse, request: ArchitectureReques
     return '# Architecture generation incomplete';
   }
 
+  const summary = buildExecutiveSummary(request, architecture, compliance, deployment);
+  const roadmap = buildRoadmap(request, architecture, compliance);
+  const risks = buildRiskRegister(request, architecture, compliance);
+  const formatPolicy = (policy: Deployment['iamPolicies'][number]) =>
+    typeof policy === 'string' ? policy : JSON.stringify(policy, null, 2);
+
   let markdown = `# Generated Reference Architecture
 
 > **Generated**: ${timestamp}
@@ -196,6 +266,20 @@ function generateMarkdown(response: PartialResponse, request: ArchitectureReques
 > - Integration Pattern: ${request.integrationPattern}
 > - Data Classification: ${request.dataClassification}
 > - Scale Tier: ${request.scaleTier}
+
+## Executive Summary
+
+### ${summary.headline}
+${summary.overview}
+
+### Business Value
+${summary.businessValue.map((item) => `- ${item}`).join('\n')}
+
+### Implementation Focus
+${summary.implementationFocus.map((item) => `- ${item}`).join('\n')}
+
+### Recommended Next Steps
+${summary.nextSteps.map((item, i) => `${i + 1}. ${item}`).join('\n')}
 
 ## Architecture Diagram
 
@@ -235,7 +319,7 @@ ${items.map((item) => `- **${item.requirement}** (${item.priority})
 ${deployment.steps.map((step, i) => `${i + 1}. ${step}`).join('\n')}
 
 ### IAM Policies
-${deployment.iamPolicies.map((policy) => `\`\`\`json\n${policy}\n\`\`\``).join('\n\n')}
+${deployment.iamPolicies.map((policy) => `\`\`\`json\n${formatPolicy(policy)}\n\`\`\``).join('\n\n')}
 
 ### Network Configuration
 \`\`\`
@@ -244,6 +328,23 @@ ${deployment.networkConfig}
 
 ### Monitoring Setup
 ${deployment.monitoringSetup}
+
+## Implementation Roadmap
+
+${roadmap.map((phase) => `### ${phase.phase} (${phase.timeline})
+${phase.objective}
+
+**Key Activities**
+${phase.activities.map((item) => `- ${item}`).join('\n')}
+
+**Exit Criteria**
+${phase.exitCriteria.map((item) => `- ${item}`).join('\n')}`).join('\n\n')}
+
+## Risk Register
+
+| Risk | Impact | Likelihood | Mitigation | Owner |
+|------|--------|------------|------------|-------|
+${risks.map((risk) => `| ${risk.risk} | ${risk.impact} | ${risk.likelihood} | ${risk.mitigation} | ${risk.owner} |`).join('\n')}
 `;
 
   if (sampleCode) {

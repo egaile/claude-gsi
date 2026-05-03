@@ -55,9 +55,12 @@ The system is a three-tier application:
 | `ConfigurationForm` | `components/form/ConfigurationForm.tsx` | Selects use case, deployment cloud, AI provider, integration pattern, data classification, and scale |
 | `InfoPanel` | `components/form/InfoPanel.tsx` | Feature summary and provider-neutral positioning |
 | `ResultsDashboard` | `components/results/ResultsDashboard.tsx` | Tab container, export actions, generated result shell |
+| `SummaryTab` | `components/results/SummaryTab.tsx` | Executive summary, business value, and next steps |
 | `ArchitectureTab` | `components/results/ArchitectureTab.tsx` | Diagram, components, data flows |
 | `ComplianceTab` | `components/results/ComplianceTab.tsx` | HIPAA checklist and BAA guidance |
 | `DeploymentTab` | `components/results/DeploymentTab.tsx` | Deployment steps, IAM, network, monitoring |
+| `RoadmapTab` | `components/results/RoadmapTab.tsx` | Phased implementation roadmap |
+| `RiskTab` | `components/results/RiskTab.tsx` | Risk register with mitigation and ownership |
 | `CodeTab` | `components/results/CodeTab.tsx` | On-demand Python and TypeScript samples |
 
 ### State Shape

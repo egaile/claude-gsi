@@ -46,11 +46,14 @@ GSI teams repeatedly need to design secure, compliant AI architectures for healt
 ### Outputs
 
 - Mermaid architecture diagram
+- Executive summary with business value, implementation focus, and recommended next steps
 - Component inventory with PHI touchpoints
 - Data flows with encryption indicators
 - HIPAA compliance checklist
 - BAA requirements for selected cloud services and AI provider
 - Deployment guide with IAM, networking, and monitoring guidance
+- Implementation roadmap with phases, activities, and exit criteria
+- Risk register with impact, likelihood, mitigation, and owner
 - Python and TypeScript sample code for the selected AI provider
 
 ## Functional Requirements

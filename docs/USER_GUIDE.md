@@ -97,7 +97,14 @@ Indicate your expected deployment scale:
 
 ## Understanding the Output
 
-After generation, you'll see a tabbed dashboard with four sections:
+After generation, you'll see a tabbed dashboard with seven sections:
+
+### Summary Tab
+
+- **Executive Summary**: Customer-ready overview of the recommended AI architecture
+- **Business Value**: Why the architecture matters to the GSI/customer engagement
+- **Implementation Focus**: Key counts and delivery considerations from the generated architecture
+- **Recommended Next Steps**: Practical actions for customer review and delivery planning
 
 ### Architecture Tab
 
@@ -123,6 +130,20 @@ Each item shows:
 - **IAM Policies**: Ready-to-use permission policies for your cloud platform
 - **Network Configuration**: VPC, subnet, and security group specifications
 - **Monitoring Setup**: Logging and alerting configuration
+
+### Roadmap Tab
+
+- **Discovery and Controls**: Requirements, PHI/BAA validation, and success metrics
+- **Pilot Build**: Controlled implementation and workflow validation
+- **Production Hardening**: Security, monitoring, compliance evidence, and runbooks
+- **Scale and Governance**: Expansion, operating metrics, and model governance
+
+### Risks Tab
+
+Implementation risk register with:
+- Impact and likelihood
+- Mitigation strategy
+- Suggested owner
 
 ### Code Tab
 
