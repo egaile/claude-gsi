@@ -569,6 +569,10 @@ The response must be valid JSON. Use the selected AI provider consistently."""
             return Architecture.model_validate(section_data).model_dump(by_alias=True)
 
         if section_name == "deployment":
+            section_data["steps"] = [
+                self._normalize_text_item(step)
+                for step in section_data.get("steps", [])
+            ]
             section_data["iamPolicies"] = [
                 policy if isinstance(policy, (str, dict)) else json.dumps(policy)
                 for policy in section_data.get("iamPolicies", [])
@@ -576,6 +580,19 @@ The response must be valid JSON. Use the selected AI provider consistently."""
             return Deployment.model_validate(section_data).model_dump(by_alias=True)
 
         return section_data
+
+    @staticmethod
+    def _normalize_text_item(value: object) -> str:
+        """Convert model-generated step objects into readable strings."""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            for key in ["description", "step", "action", "name", "title"]:
+                text = value.get(key)
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+            return json.dumps(value, separators=(",", ":"))
+        return str(value)
 
     async def generate_stream(self, request: ArchitectureRequest) -> AsyncGenerator[dict, None]:
         """Stream architecture generation with parallel section calls and SSE events."""

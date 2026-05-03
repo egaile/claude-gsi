@@ -272,6 +272,35 @@ class TestArchitectureGenerator:
         assert isinstance(section["iamPolicies"][0], dict)
         assert section["iamPolicies"][0]["name"] == "LambdaExecution"
 
+    def test_deployment_section_normalizes_structured_steps(self, mock_anthropic_client):
+        """Deployment section should convert structured step objects to strings."""
+        from app.services.generator import ArchitectureGenerator
+
+        generator = ArchitectureGenerator("sk-ant-api03-test-key")
+        section = generator._normalize_and_validate_section(
+            "deployment",
+            {
+                "steps": [
+                    {
+                        "id": "dep-001",
+                        "name": "Create separated administrator and user roles",
+                    },
+                    {
+                        "id": "dep-002",
+                        "description": "Restrict outbound network access to approved APIs",
+                    },
+                ],
+                "iamPolicies": [],
+                "networkConfig": "Private subnets",
+                "monitoringSetup": "CloudWatch",
+            },
+        )
+
+        assert section["steps"] == [
+            "Create separated administrator and user roles",
+            "Restrict outbound network access to approved APIs",
+        ]
+
 
 class TestResponseSizeLimit:
     """Tests for response size validation."""
