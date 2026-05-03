@@ -246,6 +246,32 @@ class TestArchitectureGenerator:
         assert section["checklist"][1]["category"] == "technical"
         assert section["checklist"][1]["priority"] == "recommended"
 
+    def test_deployment_section_accepts_structured_iam_policies(self, mock_anthropic_client):
+        """Deployment section should accept structured IAM policy objects."""
+        from app.services.generator import ArchitectureGenerator
+
+        generator = ArchitectureGenerator("sk-ant-api03-test-key")
+        section = generator._normalize_and_validate_section(
+            "deployment",
+            {
+                "steps": ["Deploy service"],
+                "iamPolicies": [
+                    {
+                        "name": "LambdaExecution",
+                        "policy": {
+                            "Version": "2012-10-17",
+                            "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
+                        },
+                    }
+                ],
+                "networkConfig": "Private subnets",
+                "monitoringSetup": "CloudWatch",
+            },
+        )
+
+        assert isinstance(section["iamPolicies"][0], dict)
+        assert section["iamPolicies"][0]["name"] == "LambdaExecution"
+
 
 class TestResponseSizeLimit:
     """Tests for response size validation."""

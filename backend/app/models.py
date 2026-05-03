@@ -3,7 +3,7 @@ Pydantic models for API request/response validation.
 """
 
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -118,7 +118,7 @@ class Deployment(BaseModel):
     """Deployment configuration details."""
     
     steps: list[str]
-    iam_policies: list[str] = Field(alias="iamPolicies")
+    iam_policies: list[str | dict[str, Any]] = Field(alias="iamPolicies")
     network_config: str = Field(alias="networkConfig")
     monitoring_setup: str = Field(alias="monitoringSetup")
 

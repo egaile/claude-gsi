@@ -569,6 +569,10 @@ The response must be valid JSON. Use the selected AI provider consistently."""
             return Architecture.model_validate(section_data).model_dump(by_alias=True)
 
         if section_name == "deployment":
+            section_data["iamPolicies"] = [
+                policy if isinstance(policy, (str, dict)) else json.dumps(policy)
+                for policy in section_data.get("iamPolicies", [])
+            ]
             return Deployment.model_validate(section_data).model_dump(by_alias=True)
 
         return section_data
