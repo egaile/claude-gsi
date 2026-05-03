@@ -8,7 +8,11 @@ export function InfoPanel() {
         <ul className="space-y-3 text-sm text-gray-600">
           <li className="flex gap-2">
             <CheckCircle className="w-5 h-5 text-anthropic-600 flex-shrink-0" />
-            <span>Architecture diagram with PHI touchpoints highlighted</span>
+            <span>Executive summary with business value and next steps</span>
+          </li>
+          <li className="flex gap-2">
+            <CheckCircle className="w-5 h-5 text-anthropic-600 flex-shrink-0" />
+            <span>Architecture map with PHI touchpoints highlighted</span>
           </li>
           <li className="flex gap-2">
             <CheckCircle className="w-5 h-5 text-anthropic-600 flex-shrink-0" />
@@ -17,6 +21,10 @@ export function InfoPanel() {
           <li className="flex gap-2">
             <CheckCircle className="w-5 h-5 text-anthropic-600 flex-shrink-0" />
             <span>Cloud-specific deployment guide with IAM policies</span>
+          </li>
+          <li className="flex gap-2">
+            <CheckCircle className="w-5 h-5 text-anthropic-600 flex-shrink-0" />
+            <span>Implementation roadmap and risk register for delivery planning</span>
           </li>
           <li className="flex gap-2">
             <CheckCircle className="w-5 h-5 text-anthropic-600 flex-shrink-0" />
